@@ -3,7 +3,7 @@ import xarray as xr
 import pandas as pd
 import Ngl
 import matplotlib.pyplot as plt
-from mpl_toolkits.basemap import Basemap
+# from mpl_toolkits.basemap import Basemap
 import cartopy.crs as ccrs
 from cartopy.io.shapereader import Reader
 from cartopy.feature import ShapelyFeature
@@ -13,6 +13,8 @@ import re
 
 maindir = 'input/ymonmeans/'
 inpfsuf = "all_mon.nc"
+p1suf = 'mon_avg_2013_2031.nc'
+p2suf = 'mon_avg_2032_2050.nc'
 # inpfname = "input/ymonmeans/rcp2.6_seg_005/all_mon.nc"
 
 inpvname = "TREFHT"
@@ -27,25 +29,42 @@ maxlon = 326.0
 minlon = 280.0
 
 runnames = os.listdir(maindir)
-inpfnames = {maindir + '/' + i + '/' + inpfsuf : i for i in runnames}
+# inpfnames = {maindir + '/' + i + '/' + inpfsuf : i for i in runnames}
+alldata = [{'p1fname': maindir + '/' + i + '/' + p1suf, 'p2fname': maindir + '/' + i + '/' + p2suf ,'runname' : i} for i in runnames]
+for item in alldata:
+    item['p1'] = xr.open_dataset(item['p1fname'])[inpvname].sel(lat = slice(minlat,maxlat), lon = slice(minlon,maxlon))
+    item['p2'] = xr.open_dataset(item['p2fname'])[inpvname].sel(lat = slice(minlat,maxlat), lon = slice(minlon,maxlon))
 
-# dicvars = {inpfname:xr.open_dataset(inpfname)[inpvname].sel(lat = slice(minlat,maxlat), lon = slice(minlon,maxlon)) for inpfname in inpfnames}
-dicvars = {inpfname:xr.open_dataset(inpfname)[inpvname].sel(lat = slice(minlat,maxlat), lon = slice(minlon,maxlon)) for inpfname in inpfnames.keys()}
+
+
 # Make sure the time axis are equal to the one in ref
+# ref = alldata[0]['p1'].coords['time']
+# for inpfname in inpfnames.keys():
+#     dicvars[inpfname].coords['time'] = ref
+#     dicvars[inpfname] = dicvars[inpfname].expand_dims()
+for item in alldata:
+    sce, ens = item['runname'].rsplit('_',1)
+    item['p1'] = item['p1'].expand_dims('scenario')
+    item['p1'].coords['scenario'] = pd.Index([sce])
+    item['p1'] = item['p1'].expand_dims('ensemble')
+    item['p1'].coords['ensemble'] = pd.Index([ens])
+    item['p2'] = item['p2'].expand_dims('scenario')
+    item['p2'].coords['scenario'] = pd.Index([sce])
+    item['p2'] = item['p2'].expand_dims('ensemble')
+    item['p2'].coords['ensemble'] = pd.Index([ens])
 
-ref = dicvars[list(inpfnames.keys())[0]].coords['time']
-for inpfname in inpfnames.keys():
-    dicvars[inpfname].coords['time'] = ref
-    dicvars[inpfname] = dicvars[inpfname].expand_dims()
-v = vars[0]
-v = v.expand_dims('scenario')
-v.coords['scenario'] = pd.Index(['poi'])
-v.assign_coords(scenario = ('poi'))
-v.set_coords()
+allp1 = xr.merge([item['p1'] for item in alldata]).to_array().squeeze('variable')
+allp2 = xr.merge([item['p2'] for item in alldata]).to_array().squeeze('variable')
+# Math won't work if times are different
+allp1.coords['time'] = allp2.coords['time']
+anom = allp2-allp1
 
-n = runnames[0]
-[re.split('_',n)[0:1] for n in runnames]
+# plot = xr.plot.imshow(allp1.isel(time = 0), col = 'scenario', row = 'ensemble', levels = np.arange(-3.0,3.0,0.2), cmap = "jet")
+plot = xr.plot.imshow(anom.isel(time = 0), col = 'scenario', row = 'ensemble', cmap = "jet")
+plot = xr.plot.imshow(anom.mean(dim = 'ensemble'), col = 'scenario', row = 'time', cmap = "jet")
 
-varall = xr.concat(vars, pd.Index(runnames, name='run'))
 
-plot = xr.plot.imshow(varall[:,0,:,:], col = 'run', col_wrap=4, levels = range(290,310,2), cmap = "jet")
+
+# plot = xr.plot.imshow(allp1.isel(time = 0), col = 'scenario', row = 'ensemble', levels = np.arange(290.0,300.0,0.5), cmap = "jet")
+
+# plot = xr.plot.imshow(varall[:,0,:,:], col = 'run', col_wrap=4, levels = range(290,310,2), cmap = "jet")
