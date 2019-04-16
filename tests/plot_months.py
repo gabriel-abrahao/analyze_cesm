@@ -4,6 +4,7 @@ import Ngl
 import matplotlib.pyplot as plt
 from mpl_toolkits.basemap import Basemap
 import cartopy.crs as ccrs
+import cftime
 
 inpfname = "/home/gabriel/apagar/rcp8.5_weg_005.cam2.h1.2050-01-01-00000.nc"
 
@@ -23,6 +24,9 @@ var = var.sel(lat = slice(minlat,maxlat), lon = slice(minlon,maxlon))
 var = var.isel(time = range(0,4))
 
 print(var)
+print(var.coords['time.month'])
+print(var.sel(time = slice('2050-02-01','2050-02-05')))
+print(var.groupby('time.month').mean(dim = 'time'))
 
 # var.plot()
 # plt.figure()
