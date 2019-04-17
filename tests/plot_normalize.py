@@ -28,7 +28,8 @@ minlat = -33.0
 maxlon = 326.0
 minlon = 280.0
 
-runnames = os.listdir(maindir)
+# runnames = os.listdir(maindir)
+runnames = ["rcp8.5_seg_006"]
 # inpfnames = {maindir + '/' + i + '/' + inpfsuf : i for i in runnames}
 alldata = [{'p1fname': maindir + '/' + i + '/' + p1suf, 'p2fname': maindir + '/' + i + '/' + p2suf ,'runname' : i} for i in runnames]
 for item in alldata:
@@ -59,10 +60,20 @@ allp2 = xr.merge([item['p2'] for item in alldata]).to_array().squeeze('variable'
 allp1.coords['time'] = allp2.coords['time']
 anom = allp2-allp1
 
-# plot = xr.plot.imshow(allp1.isel(time = 0), col = 'scenario', row = 'ensemble', levels = np.arange(-3.0,3.0,0.2), cmap = "jet")
-plot = xr.plot.imshow(anom.isel(time = 0), col = 'scenario', row = 'ensemble', cmap = "jet")
-plot = xr.plot.imshow(anom.mean(dim = 'ensemble'), col = 'scenario', row = 'time', cmap = "jet")
 
+# plot = xr.plot.imshow(anom.isel(time = 0), col = 'scenario', row = 'ensemble', cmap = "jet")
+# plot = xr.plot.imshow(anom.mean(dim = 'ensemble'), col = 'scenario', row = 'time', cmap = "jet")
+
+
+v1 = allp1.isel(time = 0, scenario = 0, ensemble = 0)
+sig = xr.where(v1 <= 290.0, 1.0, 0.0)
+
+xr.plot.imshow(v1, cmap = "jet")
+xr.plot.contourf(sig, levels = [0,0.99,2],hatches=['','.'],alpha = 0)
+
+# plt.show()
+
+# hvplot.quadmesh(anom)
 
 
 # plot = xr.plot.imshow(allp1.isel(time = 0), col = 'scenario', row = 'ensemble', levels = np.arange(290.0,300.0,0.5), cmap = "jet")
