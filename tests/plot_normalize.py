@@ -1,6 +1,7 @@
 import numpy as np
 import xarray as xr
 import pandas as pd
+import scipy
 import Ngl
 import matplotlib.pyplot as plt
 # from mpl_toolkits.basemap import Basemap
@@ -59,7 +60,11 @@ allp2 = xr.merge([item['p2'] for item in alldata]).to_array().squeeze('variable'
 # Math won't work if times are different
 allp1.coords['time'] = allp2.coords['time']
 anom = allp2-allp1
+anomsig = scipy.stats.ttest_ind(allp2,allp1,axis=2) #Not quite right
 
+
+poi = xr.DataArray(allp2.values - allp1.values, coords = allp2.coords)
+poi
 
 # plot = xr.plot.imshow(anom.isel(time = 0), col = 'scenario', row = 'ensemble', cmap = "jet")
 # plot = xr.plot.imshow(anom.mean(dim = 'ensemble'), col = 'scenario', row = 'time', cmap = "jet")
