@@ -2,7 +2,7 @@ import numpy as np
 import xarray as xr
 import pandas as pd
 import scipy
-import Ngl
+# import Ngl
 import matplotlib.pyplot as plt
 # from mpl_toolkits.basemap import Basemap
 import cartopy.crs as ccrs
@@ -60,16 +60,20 @@ if np.mod(allinp.coords['time'].shape,2) != 0.0:
     print("WARNING: Odd number of times in variable, dropping the first...")
     allinp = allinp.isel(time = slice(1,None))
 
-test = allinp.isel(ensemble = 0, scenario = 1)
-poi = test.coords['time'].values
-poi
-id = pd.MultiIndex.from_arrays([test.coords['time.month'].values, test.coords['time.year'].values], names=['month','year'])
-test.coords['time'] = id
-poi = test.coords['time'].values
-poi.shape
-np.unique(poi).shape
-test.sel(month = 1)
-test.unstack('time')
+id = pd.MultiIndex.from_arrays([allinp.coords['time.month'].values, allinp.coords['time.year'].values], names=['month','year'])
+allinp.coords['time'] = id
+allinp = allinp.unstack('time')
+
+# test = allinp.isel(ensemble = 0, scenario = 1)
+# poi = test.coords['time'].values
+# poi
+# id = pd.MultiIndex.from_arrays([test.coords['time.month'].values, test.coords['time.year'].values], names=['month','year'])
+# test.coords['time'] = id
+# poi = test.coords['time'].values
+# poi.shape
+# np.unique(poi).shape
+# test.sel(month = 1)
+# test.unstack('time')
 
 # Math won't work if times are different
 # allp1.coords['time'] = allp2.coords['time']
