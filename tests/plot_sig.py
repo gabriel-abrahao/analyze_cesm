@@ -1,7 +1,7 @@
 import numpy as np
 import xarray as xr
 import pandas as pd
-import scipy
+import scipy.stats
 # import Ngl
 import matplotlib.pyplot as plt
 # from mpl_toolkits.basemap import Basemap
@@ -28,6 +28,10 @@ maxlat = 5.0
 minlat = -33.0
 maxlon = 326.0
 minlon = 280.0
+
+# Periods for the t-test
+p1years = (2013,2031)
+p2years = (2032,2050)
 
 runnames = os.listdir(maindir)
 # runnames = ["rcp8.5_seg_006"]
@@ -63,6 +67,19 @@ if np.mod(allinp.coords['time'].shape,2) != 0.0:
 id = pd.MultiIndex.from_arrays([allinp.coords['time.month'].values, allinp.coords['time.year'].values], names=['month','year'])
 allinp.coords['time'] = id
 allinp = allinp.unstack('time')
+
+allp1 = allinp.sel(year = slice(*p1years))
+allp2 = allinp.sel(year = slice(*p2years))
+
+
+teststats = scipy.stats.ttest_ind(allp2,allp1,axis = 5)
+teststats.statistic.shape
+
+
+
+poi = xr.Dataset()
+
+# allinp.sel(year = slice(*(2013,2030)))
 
 # test = allinp.isel(ensemble = 0, scenario = 1)
 # poi = test.coords['time'].values
