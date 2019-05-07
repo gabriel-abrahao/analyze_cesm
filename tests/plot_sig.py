@@ -82,9 +82,9 @@ def main():
 
     allp1.squeeze('year')
     # test_year = scipy.stats.ttest_ind(allp2,allp1,axis = allp1.dims.index('year'))
-    test_year = ttest(allp2,allp1,dim = 'year')
-    test_year
-    xr.plot.imshow(test_year['statistic'].isel(month = 0, ensemble = 0,scenario = 0))
+    test_year_ens = ttest(allp2,allp1,dims = ['year','ensemble'])
+    test_year_ens
+    # xr.plot.imshow(test_year['statistic'].isel(month = 0, ensemble = 0,scenario = 0))
 
     xr.plot.imshow(anom.isel(month = 0, ensemble = 0,scenario = 0))
 
@@ -131,15 +131,29 @@ def main():
 
     # plot = xr.plot.imshow(varall[:,0,:,:], col = 'run', col_wrap=4, levels = range(290,310,2), cmap = "jet")
 
-def ttest(arr1,arr2,dim):
-    # TODO: See what can be done about aligning
-    ind = arr1.dims.index('year')
-    test = scipy.stats.ttest_ind(allp2,allp1,axis = ind)
-    results = xr.Dataset()
-    results['statistic'] = xr.DataArray(test.statistic, coords = arr1.isel({dim : 0}).coords)
-    results['pvalue'] = xr.DataArray(test.pvalue, coords = arr1.isel({dim : 0}).coords)
-    return results
+def ttest(inparr1,inparr2,dims):
+    # inparr1 = allp2
+    # inparr2 = allp1
+    # # dims = ['year','ensemble']
+    # dims = 'year'
 
+    if not isinstance(dims,list): dims = [dims]
+
+    # A name for the stacked dimension to be tested along
+    testdimname = 'testdim'
+
+    arr1 = inparr1.stack({testdimname : dims})
+    arr2 = inparr2.stack({testdimname : dims})
+
+    # TODO: See what can be done about aligning
+    ind = arr1.dims.index(testdimname)
+    test = scipy.stats.ttest_ind(arr1,arr2,axis = ind)
+    results = xr.Dataset()
+    results['statistic'] = xr.DataArray(test.statistic, coords = arr1.isel({testdimname : 0}).coords)
+    results['pvalue'] = xr.DataArray(test.pvalue, coords = arr1.isel({testdimname : 0}).coords)
+    results = results.drop(testdimname)
+    results.attrs['ttest_dims'] = 't-test made along dimensions: ' + ','.join(dims)
+    return results
 
 
 if __name__ == '__main__':
