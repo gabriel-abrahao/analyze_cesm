@@ -12,110 +12,135 @@ import cftime
 import os
 import re
 
-maindir = 'input/allmon/'
-inpfsuf = "allmon.nc"
-# p1suf = 'mon_avg_2013_2031.nc'
-# p2suf = 'mon_avg_2032_2050.nc'
-# inpfname = "input/ymonmeans/rcp2.6_seg_005/all_mon.nc"
+def main():
+    maindir = 'input/allmon/'
+    inpfsuf = "allmon.nc"
+    # p1suf = 'mon_avg_2013_2031.nc'
+    # p2suf = 'mon_avg_2032_2050.nc'
+    # inpfname = "input/ymonmeans/rcp2.6_seg_005/all_mon.nc"
 
-inpvname = "TREFHT"
+    inpvname = "TREFHT"
 
-shpfname = "/home/gabriel/shapefiles/estados_2010.shp"
+    shpfname = "/home/gabriel/shapefiles/estados_2010.shp"
 
-pdffname = "test.pdf"
+    pdffname = "test.pdf"
 
-maxlat = 5.0
-minlat = -33.0
-maxlon = 326.0
-minlon = 280.0
+    maxlat = 5.0
+    minlat = -33.0
+    maxlon = 326.0
+    minlon = 280.0
 
-# Periods for the t-test
-p1years = (2013,2031)
-p2years = (2032,2050)
+    # Periods for the t-test
+    p1years = (2013,2031)
+    p2years = (2032,2050)
 
-runnames = os.listdir(maindir)
-# runnames = ["rcp8.5_seg_006"]
-# inpfnames = {maindir + '/' + i + '/' + inpfsuf : i for i in runnames}
-# alldata = [{'p1fname': maindir + '/' + i + '/' + p1suf, 'p2fname': maindir + '/' + i + '/' + p2suf ,'runname' : i} for i in runnames]
-alldata = [{'inpfname': maindir + '/' + i + '/' + inpfsuf, 'runname' : i} for i in runnames]
-for item in alldata:
-    item['inp'] = xr.open_dataset(item['inpfname'])[inpvname].sel(lat = slice(minlat,maxlat), lon = slice(minlon,maxlon))
-
-
-
-# Make sure the time axis are equal to the one in ref
-# ref = alldata[0]['p1'].coords['time']
-# for inpfname in inpfnames.keys():
-#     dicvars[inpfname].coords['time'] = ref
-#     dicvars[inpfname] = dicvars[inpfname].expand_dims()
-for item in alldata:
-    sce, ens = item['runname'].rsplit('_',1)
-    item['inp'] = item['inp'].expand_dims('scenario')
-    item['inp'].coords['scenario'] = pd.Index([sce])
-    item['inp'] = item['inp'].expand_dims('ensemble')
-    item['inp'].coords['ensemble'] = pd.Index([ens])
-
-
-allinp = xr.merge([item['inp'] for item in alldata]).to_array().squeeze('variable')
-
-# FIXME: For some reason, CDO can put an extra value for the first month
-# This fix removes it if the input has an odd number of values
-if np.mod(allinp.coords['time'].shape,2) != 0.0:
-    print("WARNING: Odd number of times in variable, dropping the first...")
-    allinp = allinp.isel(time = slice(1,None))
-
-id = pd.MultiIndex.from_arrays([allinp.coords['time.month'].values, allinp.coords['time.year'].values], names=['month','year'])
-allinp.coords['time'] = id
-allinp = allinp.unstack('time')
-
-allp1 = allinp.sel(year = slice(*p1years))
-allp2 = allinp.sel(year = slice(*p2years))
-
-
-teststats = scipy.stats.ttest_ind(allp2,allp1,axis = 5)
-teststats.statistic.shape
+    runnames = os.listdir(maindir)
+    # runnames = ["rcp8.5_seg_006"]
+    # inpfnames = {maindir + '/' + i + '/' + inpfsuf : i for i in runnames}
+    # alldata = [{'p1fname': maindir + '/' + i + '/' + p1suf, 'p2fname': maindir + '/' + i + '/' + p2suf ,'runname' : i} for i in runnames]
+    alldata = [{'inpfname': maindir + '/' + i + '/' + inpfsuf, 'runname' : i} for i in runnames]
+    for item in alldata:
+        item['inp'] = xr.open_dataset(item['inpfname'])[inpvname].sel(lat = slice(minlat,maxlat), lon = slice(minlon,maxlon))
 
 
 
-poi = xr.Dataset()
-
-# allinp.sel(year = slice(*(2013,2030)))
-
-# test = allinp.isel(ensemble = 0, scenario = 1)
-# poi = test.coords['time'].values
-# poi
-# id = pd.MultiIndex.from_arrays([test.coords['time.month'].values, test.coords['time.year'].values], names=['month','year'])
-# test.coords['time'] = id
-# poi = test.coords['time'].values
-# poi.shape
-# np.unique(poi).shape
-# test.sel(month = 1)
-# test.unstack('time')
-
-# Math won't work if times are different
-# allp1.coords['time'] = allp2.coords['time']
-# anom = allp2-allp1
-# anomsig = scipy.stats.ttest_ind(allp2,allp1,axis=2) #Not quite right
-#
-#
-# poi = xr.DataArray(allp2.values - allp1.values, coords = allp2.coords)
-# poi
-
-# plot = xr.plot.imshow(anom.isel(time = 0), col = 'scenario', row = 'ensemble', cmap = "jet")
-# plot = xr.plot.imshow(anom.mean(dim = 'ensemble'), col = 'scenario', row = 'time', cmap = "jet")
+    # Make sure the time axis are equal to the one in ref
+    # ref = alldata[0]['p1'].coords['time']
+    # for inpfname in inpfnames.keys():
+    #     dicvars[inpfname].coords['time'] = ref
+    #     dicvars[inpfname] = dicvars[inpfname].expand_dims()
+    for item in alldata:
+        sce, ens = item['runname'].rsplit('_',1)
+        item['inp'] = item['inp'].expand_dims('scenario')
+        item['inp'].coords['scenario'] = pd.Index([sce])
+        item['inp'] = item['inp'].expand_dims('ensemble')
+        item['inp'].coords['ensemble'] = pd.Index([ens])
 
 
-v1 = allp1.isel(time = 0, scenario = 0, ensemble = 0)
-sig = xr.where(v1 <= 290.0, 1.0, 0.0)
+    allinp = xr.merge([item['inp'] for item in alldata]).to_array().squeeze('variable')
 
-xr.plot.imshow(v1, cmap = "jet")
-xr.plot.contourf(sig, levels = [0,0.99,2],hatches=['','.'],alpha = 0)
+    # FIXME: For some reason, CDO can put an extra value for the first month
+    # This fix removes it if the input has an odd number of values
+    if np.mod(allinp.coords['time'].shape,2) != 0.0:
+        print("WARNING: Odd number of times in variable, dropping the first...")
+        allinp = allinp.isel(time = slice(1,None))
 
-# plt.show()
+    id = pd.MultiIndex.from_arrays([allinp.coords['time.month'].values, allinp.coords['time.year'].values], names=['month','year'])
+    allinp.coords['time'] = id
+    allinp = allinp.unstack('time')
 
-# hvplot.quadmesh(anom)
+    allp1 = allinp.sel(year = slice(*p1years))
+    allp2 = allinp.sel(year = slice(*p2years))
+
+    # We have to mess up the metadata
+    # allp2.coords['year'] = allp1.coords['year']
+    anom = allp2.mean('year') - allp1.mean('year')
+
+    anom = allp2 - allp1
+
+    allp1.dims.index("year")
+
+    allp1.squeeze('year')
+    # test_year = scipy.stats.ttest_ind(allp2,allp1,axis = allp1.dims.index('year'))
+    test_year = ttest(allp2,allp1,dim = 'year')
+    test_year
+    xr.plot.imshow(test_year['statistic'].isel(month = 0, ensemble = 0,scenario = 0))
+
+    xr.plot.imshow(anom.isel(month = 0, ensemble = 0,scenario = 0))
 
 
-# plot = xr.plot.imshow(allp1.isel(time = 0), col = 'scenario', row = 'ensemble', levels = np.arange(290.0,300.0,0.5), cmap = "jet")
 
-# plot = xr.plot.imshow(varall[:,0,:,:], col = 'run', col_wrap=4, levels = range(290,310,2), cmap = "jet")
+    # allinp.sel(year = slice(*(2013,2030)))
+
+    # test = allinp.isel(ensemble = 0, scenario = 1)
+    # poi = test.coords['time'].values
+    # poi
+    # id = pd.MultiIndex.from_arrays([test.coords['time.month'].values, test.coords['time.year'].values], names=['month','year'])
+    # test.coords['time'] = id
+    # poi = test.coords['time'].values
+    # poi.shape
+    # np.unique(poi).shape
+    # test.sel(month = 1)
+    # test.unstack('time')
+
+    # Math won't work if times are different
+    # allp1.coords['time'] = allp2.coords['time']
+    # anom = allp2-allp1
+    # anomsig = scipy.stats.ttest_ind(allp2,allp1,axis=2) #Not quite right
+    #
+    #
+    # poi = xr.DataArray(allp2.values - allp1.values, coords = allp2.coords)
+    # poi
+
+    # plot = xr.plot.imshow(anom.isel(time = 0), col = 'scenario', row = 'ensemble', cmap = "jet")
+    # plot = xr.plot.imshow(anom.mean(dim = 'ensemble'), col = 'scenario', row = 'time', cmap = "jet")
+
+
+    v1 = allp1.isel(time = 0, scenario = 0, ensemble = 0)
+    sig = xr.where(v1 <= 290.0, 1.0, 0.0)
+
+    xr.plot.imshow(v1, cmap = "jet")
+    xr.plot.contourf(sig, levels = [0,0.99,2],hatches=['','.'],alpha = 0)
+
+    # plt.show()
+
+    # hvplot.quadmesh(anom)
+
+
+    # plot = xr.plot.imshow(allp1.isel(time = 0), col = 'scenario', row = 'ensemble', levels = np.arange(290.0,300.0,0.5), cmap = "jet")
+
+    # plot = xr.plot.imshow(varall[:,0,:,:], col = 'run', col_wrap=4, levels = range(290,310,2), cmap = "jet")
+
+def ttest(arr1,arr2,dim):
+    # TODO: See what can be done about aligning
+    ind = arr1.dims.index('year')
+    test = scipy.stats.ttest_ind(allp2,allp1,axis = ind)
+    results = xr.Dataset()
+    results['statistic'] = xr.DataArray(test.statistic, coords = arr1.isel({dim : 0}).coords)
+    results['pvalue'] = xr.DataArray(test.pvalue, coords = arr1.isel({dim : 0}).coords)
+    return results
+
+
+
+if __name__ == '__main__':
+    main()
