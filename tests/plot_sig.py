@@ -85,8 +85,10 @@ def main():
     # xr.plot.imshow(test_year_ens['diff'].isel(month = 0,scenario = 0))
 
     # fig = plt.figure()
-    fc = xr.plot.imshow(test_year_ens['diff'],row = 'month',col = 'scenario')
-    ax = fc.axes[0]
+    # fc = xr.plot.imshow(test_year_ens['diff'],row = 'month',col = 'scenario')
+    fc = xr.plot.imshow(test_year_ens['diff'].isel(month = [0,1], scenario = [0,1]),row = 'month',col = 'scenario')
+    ax = fc.axes.flat[0]
+
     # xr.plot.contourf(test_year_ens['diff'].isel(month = 0, scenario = 0),ax=ax,levels = [0,0.05,2],hatches=['','.'],alpha = 0)
     for ax in fc.axes.flat:
         # ax.set_title('teste')
