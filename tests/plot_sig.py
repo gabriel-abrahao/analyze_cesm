@@ -78,15 +78,32 @@ def main():
 
     anom = allp2 - allp1
 
-    allp1.dims.index("year")
-
-    allp1.squeeze('year')
     # test_year = scipy.stats.ttest_ind(allp2,allp1,axis = allp1.dims.index('year'))
     test_year_ens = ttest(allp2,allp1,dims = ['year','ensemble'])
     test_year_ens
-    # xr.plot.imshow(test_year['statistic'].isel(month = 0, ensemble = 0,scenario = 0))
+    # xr.plot.imshow(test_year_ens['statistic'].isel(month = 0,scenario = 0))
+    # xr.plot.imshow(test_year_ens['diff'].isel(month = 0,scenario = 0))
 
-    xr.plot.imshow(anom.isel(month = 0, ensemble = 0,scenario = 0))
+    # fig = plt.figure()
+    fc = xr.plot.imshow(test_year_ens['diff'],row = 'month',col = 'scenario')
+    ax = fc.axes[0]
+    # xr.plot.contourf(test_year_ens['diff'].isel(month = 0, scenario = 0),ax=ax,levels = [0,0.05,2],hatches=['','.'],alpha = 0)
+    for ax in fc.axes.flat:
+        # ax.set_title('teste')
+        xr.plot.contourf(test_year_ens['diff'].isel(month = 0, scenario = 0),ax=ax,levels = [0,0.05,2],hatches=['///','...',''],alpha = 0)
+
+    # fc = xr.plot.contourf(test_year_ens['diff'],row = 'month',col = 'scenario',levels = [0,0.05,2],hatches=['','.'],alpha = 0)
+
+    # xr.plot.imshow(test_year_ens['diff'].isel(month = 0, scenario = 0))
+    # xr.plot.contourf(test_year_ens['pvalue'].isel(month = 0, scenario = 0),levels = [0,0.05,0.10,2],hatches=['///','...',''],alpha = 0)
+    # fc = xr.plot.imshow(test_year_ens['pvalue'].isel(month = 0, scenario = 0))
+    # fc = xr.plot.contourf(test_year_ens['diff'].isel(month = 0, scenario = 0),levels = [0,0.05,2],hatches=['','.'],alpha = 0)
+
+    # plt.savefig(fig,"foo.pdf", format = 'pdf', bbox_inches='tight')
+    plt.savefig("foo.pdf", format = 'pdf', bbox_inches='tight')
+    # plt.show()
+
+    # xr.plot.imshow(anom.isel(month = 0,scenario = 0))
 
 
 
@@ -116,11 +133,11 @@ def main():
     # plot = xr.plot.imshow(anom.mean(dim = 'ensemble'), col = 'scenario', row = 'time', cmap = "jet")
 
 
-    v1 = allp1.isel(time = 0, scenario = 0, ensemble = 0)
-    sig = xr.where(v1 <= 290.0, 1.0, 0.0)
-
-    xr.plot.imshow(v1, cmap = "jet")
-    xr.plot.contourf(sig, levels = [0,0.99,2],hatches=['','.'],alpha = 0)
+    # v1 = allp1.isel(time = 0, scenario = 0, ensemble = 0)
+    # sig = xr.where(v1 <= 290.0, 1.0, 0.0)
+    #
+    # xr.plot.imshow(v1, cmap = "jet")
+    # xr.plot.contourf(sig, levels = [0,0.99,2],hatches=['','.'],alpha = 0)
 
     # plt.show()
 
@@ -145,10 +162,13 @@ def ttest(inparr1,inparr2,dims):
     arr1 = inparr1.stack({testdimname : dims})
     arr2 = inparr2.stack({testdimname : dims})
 
+    diff = arr1.mean(**{'dim' : testdimname}) - arr2.mean(**{'dim' : testdimname})
+
     # TODO: See what can be done about aligning
     ind = arr1.dims.index(testdimname)
     test = scipy.stats.ttest_ind(arr1,arr2,axis = ind)
     results = xr.Dataset()
+    results['diff'] = diff
     results['statistic'] = xr.DataArray(test.statistic, coords = arr1.isel({testdimname : 0}).coords)
     results['pvalue'] = xr.DataArray(test.pvalue, coords = arr1.isel({testdimname : 0}).coords)
     results = results.drop(testdimname)
