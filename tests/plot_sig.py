@@ -167,7 +167,12 @@ def ttest(inparr1,inparr2,dims):
     diff = arr1.mean(**{'dim' : testdimname}) - arr2.mean(**{'dim' : testdimname})
 
     # TODO: See what can be done about aligning
-    ind = arr1.dims.index(testdimname)
+
+    try:
+        ind = arr1.dims.index(testdimname)
+    except:
+        ind = [i[0] for i in arr1.dims.items()].index(testdimname)
+
     test = scipy.stats.ttest_ind(arr1,arr2,axis = ind)
     results = xr.Dataset()
     results['diff'] = diff
