@@ -102,19 +102,21 @@ def main():
     res.sfXArray               = lon
     res.sfYArray               = lat
 
-    res.mpLimitMode            = 'LatLon'
-    res.mpMinLatF              = min(lat)
-    res.mpMaxLatF              = max(lat)
-    res.mpMinLonF              = min(lon)
-    res.mpMaxLonF              = max(lon)
+    resmap                     = res
+    resmap.mpLimitMode            = 'LatLon'
+    resmap.mpMinLatF              = min(lat)
+    resmap.mpMaxLatF              = max(lat)
+    resmap.mpMinLonF              = min(lon)
+    resmap.mpMaxLonF              = max(lon)
 
-    res.mpGridAndLimbOn         = False
+    resmap.mpDataSetName           = "Earth..4"
+    resmap.mpOutlineSpecifiers     = ["Brazil"]
+
+    resmap.mpGridAndLimbOn         = False
 
     # Resources specific to the color filling
     rescol                         =   res
 
-    rescol.mpDataSetName           = "Earth..4"
-    rescol.mpOutlineSpecifiers     = ["Brazil"]
 
     rescol.cnFillPalette          = "BlueDarkRed18"
     rescol.cnFillOn               = True
@@ -146,11 +148,15 @@ def main():
     wks_type = "pdf"
     wks = Ngl.open_wks(wks_type,"foo.pdf")
 
-    plotcol = Ngl.contour_map(wks,var,rescol)
-    plotsig = Ngl.contour_map(wks,sig,ressig)
+    plotmap = Ngl.map(wks,resmap)
+    # plotcol = Ngl.contour(wks,var,rescol)
+    # plotsig = Ngl.contour(wks,sig,ressig)
 
+    # Ngl.overlay(plotcol,plotsig)
+
+    Ngl.draw(plotmap)
     # Ngl.draw(plotcol)
-    Ngl.draw(plotsig)
+    # Ngl.draw(plotsig)
     Ngl.frame(wks)
 
     Ngl.end()
