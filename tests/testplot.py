@@ -11,6 +11,7 @@ from cartopy.feature import ShapelyFeature
 import cftime
 import os
 import re
+import copy
 
 def main():
     maindir = 'input/allmon/'
@@ -79,13 +80,20 @@ def main():
     # plt.savefig("foo.pdf", format = 'pdf', bbox_inches='tight')
 
 
-    var = test_year_ens['diff'].isel(scenario = 0, month = 0).values
-    sig = test_year_ens['pvalue'].isel(scenario = 0, month = 0).values
-    lat = test_year_ens['lat'].values
-    lon = test_year_ens['lon'].values
+    var = test_year_ens['diff'].isel(scenario = 0, month = 0)
+    sig = test_year_ens['pvalue'].isel(scenario = 0, month = 0)
+    lat = var['lat']
+    lon = var['lon']
 
-    valmin = np.min(var)
-    valmax = np.max(var)
+
+    interprate = 8
+    interplat = np.linspace(lat[0], lat[-1], lat.shape[0]*interprate)
+    interplon = np.linspace(lon[0], lon[-1], lon.shape[0]*interprate)
+    interpsig = sig.interp(lat = interplat, lon = interplon, method = 'nearest')
+    # interpsig = sig.interp(lat = np.arange(min(lat),max(lat),0.25), lon = np.arange(min(lon),max(lon),0.25))
+
+    valmin = np.min(var.values)
+    valmax = np.max(var.values)
     if np.sign(valmax) != np.sign(valmin):
         valmaxabs = max([abs(valmin),abs(valmax)])
         valmax = valmaxabs
@@ -99,15 +107,15 @@ def main():
     res.nglFrame               = False
     res.nglDraw                = False
 
-    res.sfXArray               = lon
-    res.sfYArray               = lat
+    res.sfXArray               = lon.values
+    res.sfYArray               = lat.values
 
-    resmap                     = res
+    resmap                     = copy.deepcopy(res)
     resmap.mpLimitMode            = 'LatLon'
-    resmap.mpMinLatF              = min(lat)
-    resmap.mpMaxLatF              = max(lat)
-    resmap.mpMinLonF              = min(lon)
-    resmap.mpMaxLonF              = max(lon)
+    resmap.mpMinLatF              = min(lat.values)
+    resmap.mpMaxLatF              = max(lat.values)
+    resmap.mpMinLonF              = min(lon.values)
+    resmap.mpMaxLonF              = max(lon.values)
 
     resmap.mpDataSetName           = "Earth..4"
     resmap.mpOutlineSpecifiers     = ["Brazil"]
@@ -115,7 +123,8 @@ def main():
     resmap.mpGridAndLimbOn         = False
 
     # Resources specific to the color filling
-    rescol                         =   res
+    # rescol                         =   res
+    rescol                         =   copy.deepcopy(res)
 
 
     rescol.cnFillPalette          = "BlueDarkRed18"
@@ -132,11 +141,11 @@ def main():
     # rescol.lbOrientation          = "Horizontal"
 
 
-    ressig                        = res
+    ressig                        =   copy.deepcopy(res)
     ressig.cnFillOn               = True
     ressig.cnFillMode             = "AreaFill"
-    # ressig.cnLinesOn              = True
-    # ressig.cnLineLabelsOn         = True
+    ressig.cnLinesOn              = False
+    ressig.cnLineLabelsOn         = False
     ressig.cnLevelSelectionMode   = "ExplicitLevels"
     ressig.cnLevels               = [0.05,0.10]
 
@@ -144,15 +153,19 @@ def main():
     ressig.cnMonoFillPattern      = False
     ressig.cnFillPatterns         = [3,17,-1]
 
+    ressig.sfXArray               = interpsig.lon.values
+    ressig.sfYArray               = interpsig.lat.values
+
 
     wks_type = "pdf"
     wks = Ngl.open_wks(wks_type,"foo.pdf")
 
     plotmap = Ngl.map(wks,resmap)
-    # plotcol = Ngl.contour(wks,var,rescol)
-    # plotsig = Ngl.contour(wks,sig,ressig)
+    plotcol = Ngl.contour(wks,var.values,rescol)
+    plotsig = Ngl.contour(wks,interpsig.values,ressig)
 
-    # Ngl.overlay(plotcol,plotsig)
+    Ngl.overlay(plotmap,plotcol)
+    Ngl.overlay(plotmap,plotsig)
 
     Ngl.draw(plotmap)
     # Ngl.draw(plotcol)
