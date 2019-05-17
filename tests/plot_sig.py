@@ -4,6 +4,9 @@ import pandas as pd
 import scipy.stats
 # import Ngl
 import matplotlib.pyplot as plt
+import matplotlib
+from matplotlib.backends.backend_pdf import PdfPages
+
 # from mpl_toolkits.basemap import Basemap
 import cartopy.crs as ccrs
 from cartopy.io.shapereader import Reader
@@ -19,11 +22,11 @@ def main():
     # p2suf = 'mon_avg_2032_2050.nc'
     # inpfname = "input/ymonmeans/rcp2.6_seg_005/all_mon.nc"
 
-    inpvname = "TREFHT"
+    inpvname = "PRECT"
 
     shpfname = "/home/gabriel/shapefiles/estados_2010.shp"
 
-    pdffname = "test.pdf"
+    pdffname = "tests/periods_" + inpvname + ".pdf"
 
     maxlat = 5.0
     minlat = -33.0
@@ -58,6 +61,17 @@ def main():
 
 
     allinp = xr.merge([item['inp'] for item in alldata]).to_array().squeeze('variable')
+    allinp.attrs = alldata[0]['inp'].attrs
+
+    # Convert precipitation units
+    if allinp.attrs['units'] == 'm/s':
+        allinp.values = allinp.values*86400000.0
+        allinp.attrs['units'] = 'mm/day'
+        cmap = "RdBu"
+    else:
+        cmap = "RdBu_r"
+
+
 
     # FIXME: For some reason, CDO can put an extra value for the first month
     # This fix removes it if the input has an odd number of values
@@ -72,6 +86,10 @@ def main():
     allp1 = allinp.sel(year = slice(*p1years))
     allp2 = allinp.sel(year = slice(*p2years))
 
+    # vmax = max(np.max(test_rcp85['diff']),np.max(test_rcp26['diff'])).values
+    # vmin = min(np.min(test_rcp85['diff']),np.min(test_rcp26['diff'])).values
+    # vmax = max(abs(vmax),abs(vmin))
+
     # We have to mess up the metadata
     # allp2.coords['year'] = allp1.coords['year']
     anom = allp2.mean('year') - allp1.mean('year')
@@ -85,14 +103,26 @@ def main():
     # xr.plot.imshow(test_year_ens['diff'].isel(month = 0,scenario = 0))
 
     # fig = plt.figure()
-    # fc = xr.plot.imshow(test_year_ens['diff'],row = 'month',col = 'scenario')
-    fc = xr.plot.imshow(test_year_ens['diff'].isel(month = [0,1], scenario = [0,1]),row = 'month',col = 'scenario')
-    ax = fc.axes.flat[0]
+    # fc = xr.plot.imshow(test_year_ens['diff'].isel(month = [0,1], scenario = [0,1]),row = 'month',col = 'scenario')
+    # fc = xr.plot.imshow(test_year_ens['diff'],row = 'month',col = 'scenario', cbar_kwargs = {'label':inpvname})
+    # # ax = fc.axes.flat[0]
+    # # dir(fc)
+    # # xr.plot.contourf(test_year_ens['diff'].isel(month = 0, scenario = 0),ax=ax,levels = [0,0.05,2],hatches=['','.'],alpha = 0)
+    # for ax in fc.axes.flat:
+    #     # ax.set_title('teste')
+    #     temptitle = ax.get_title()
+    #     xr.plot.contourf(test_year_ens['diff'].isel(month = 0, scenario = 0),ax=ax,levels = [0,0.05,2],hatches=['///','...',''],alpha = 0,add_colorbar=False)
+    #     ax.set_title(temptitle)
+    #     ax.set_xlabel('')
+    #     ax.set_ylabel('')
 
-    # xr.plot.contourf(test_year_ens['diff'].isel(month = 0, scenario = 0),ax=ax,levels = [0,0.05,2],hatches=['','.'],alpha = 0)
-    for ax in fc.axes.flat:
-        # ax.set_title('teste')
-        xr.plot.contourf(test_year_ens['diff'].isel(month = 0, scenario = 0),ax=ax,levels = [0,0.05,2],hatches=['///','...',''],alpha = 0)
+    with PdfPages(pdffname) as pdf:
+        # labelpref = allinp.attrs['long_name'] + '(' + allinp.attrs['units'] + ')' + '\n' + 'WEG-SEG ' + '(' + '-'.join([str(i) for i in pyears]) + ') '
+        labelpref = allinp.attrs['long_name'] + '(' + allinp.attrs['units'] + ')' + '\n' + '(' + '-'.join([str(i) for i in p1years]) + ',' + '-'.join([str(i) for i in p1years]) + ') '
+        fc_year_ens = plot_sig_facet(test_year_ens, row = 'month', col = 'scenario',cbar_kwargs = {'label':labelpref},cmap = cmap)
+        pdf.savefig()
+        plt.close()
+
 
     # fc = xr.plot.contourf(test_year_ens['diff'],row = 'month',col = 'scenario',levels = [0,0.05,2],hatches=['','.'],alpha = 0)
 
@@ -102,12 +132,13 @@ def main():
     # fc = xr.plot.contourf(test_year_ens['diff'].isel(month = 0, scenario = 0),levels = [0,0.05,2],hatches=['','.'],alpha = 0)
 
     # plt.savefig(fig,"foo.pdf", format = 'pdf', bbox_inches='tight')
-    plt.savefig("foo.pdf", format = 'pdf', bbox_inches='tight')
+    # plt.savefig(pdffname, format = 'pdf', bbox_inches='tight')
     # plt.show()
 
     # xr.plot.imshow(anom.isel(month = 0,scenario = 0))
 
-
+    ds = xr.tutorial.open_dataset('air_temperature').load()
+    t = ds.air.groupby('time.season').mean(dim='time')
 
     # allinp.sel(year = slice(*(2013,2030)))
 
@@ -182,6 +213,22 @@ def ttest(inparr1,inparr2,dims):
     results.attrs['ttest_dims'] = 't-test made along dimensions: ' + ','.join(dims)
     return results
 
+def plot_sig_facet(testresults,*args,**kwargs):
+    facet = xr.plot.imshow(testresults['diff'],*args,**kwargs)
+
+    matplotlib.rcParams['hatch.linewidth'] = 0.1
+
+    for (i,j), ax in np.ndenumerate(facet.axes):
+        temptitle = ax.get_title()
+        namedict = (facet.name_dicts[i,j])
+        # namedict will come up none if thats an empty tile
+        if namedict is not None:
+            xr.plot.contourf(testresults['pvalue'].sel(**namedict),ax=ax,levels = [0,0.01,0.05,2],hatches=['///','...',' '],alpha = 0,add_colorbar=False)
+            # xr.plot.contourf(test_rcp85['pvalue'].sel(**namedict),ax=ax,levels = [0,0.05,2],hatches=['///','....',''],fill=False,add_colorbar=False)
+            ax.set_title(temptitle)
+            ax.set_xlabel('')
+            ax.set_ylabel('')
+    return facet
 
 if __name__ == '__main__':
     main()

@@ -21,7 +21,7 @@ def main():
     # p2suf = 'mon_avg_2032_2050.nc'
     # inpfname = "input/ymonmeans/rcp2.6_seg_005/all_mon.nc"
 
-    inpvname = "TREFHT"
+    inpvname = "PRECT"
 
     shpfname = "/home/gabriel/shapefiles/estados_2010.shp"
 
@@ -72,6 +72,16 @@ def main():
     allinp.coords['time'] = id
     allinp = allinp.unstack('time')
 
+    allinp = allinp.sel(year = slice(*pyears))
+
+    # Convert precipitation units
+    if allinp.attrs['units'] == 'm/s':
+        allinp.values = allinp.values*86400000.0
+        allinp.attrs['units'] = 'mm/day'
+        cmap = "RdBu"
+    else:
+        cmap = "RdBu_r"
+
     test_rcp85 = ttest(allinp.sel(scenario = 'rcp8.5_weg'),allinp.sel(scenario = 'rcp8.5_seg'),dims = ['year','ensemble'])
     test_rcp26 = ttest(allinp.sel(scenario = 'rcp2.6_weg'),allinp.sel(scenario = 'rcp2.6_seg'),dims = ['year','ensemble'])
 
@@ -80,33 +90,21 @@ def main():
     # test_year_ens
     # xr.plot.imshow(test_year_ens['statistic'].isel(month = 0,scenario = 0))
     # xr.plot.imshow(test_year_ens['diff'].isel(month = 0,scenario = 0))
+    vmax = max(np.max(test_rcp85['diff']),np.max(test_rcp26['diff'])).values
+    vmin = min(np.min(test_rcp85['diff']),np.min(test_rcp26['diff'])).values
+    vmax = max(abs(vmax),abs(vmin))
+
+    xr.plot.contourf(test_rcp85['pvalue'].isel(month = 0),levels = [0,0.01,0.05,2],hatches=['///','...',' '],alpha = 0)
+
+    test_rcp85['pvalue'].isel(month = 0)
 
     with PdfPages(pdffname) as pdf:
         labelpref = allinp.attrs['long_name'] + '(' + allinp.attrs['units'] + ')' + '\n' + 'WEG-SEG ' + '(' + '-'.join([str(i) for i in pyears]) + ') '
-        fc_rcp85 = plot_sig_facet(test_rcp85,col_wrap = 3, col = 'month', cbar_kwargs = {'label':labelpref + 'rcp85'})
+        fc_rcp85 = plot_sig_facet(test_rcp85,col_wrap = 3, col = 'month', cbar_kwargs = {'label':labelpref + 'rcp85'},cmap = cmap, vmax = vmax)
         pdf.savefig()
-        fc_rcp26 = plot_sig_facet(test_rcp26,col_wrap = 3, col = 'month', cbar_kwargs = {'label':labelpref + 'rcp26'})
+        fc_rcp26 = plot_sig_facet(test_rcp26,col_wrap = 3, col = 'month', cbar_kwargs = {'label':labelpref + 'rcp26'},cmap = cmap, vmax = vmax)
         pdf.savefig()
         plt.close()
-    # fc_rcp85 = xr.plot.imshow(test_rcp85['diff'].isel(month = [0,1]),col_wrap = 3, col = 'month', cbar_kwargs = {'label':inpvname})
-    #
-    # matplotlib.rcParams['hatch.linewidth'] = 0.05
-    #
-    # for (i,j), ax in np.ndenumerate(fc_rcp85.axes):
-    #     temptitle = ax.get_title()
-    #     namedict = (fc_rcp85.name_dicts[i,j])
-    #     # namedict will come up none if thats an empty tile
-    #     if namedict is not None:
-    #         xr.plot.contourf(test_rcp85['pvalue'].sel(**namedict),ax=ax,levels = [0,0.05,2],hatches=['///','....',''],alpha = 0,add_colorbar=False)
-    #         # xr.plot.contourf(test_rcp85['pvalue'].sel(**namedict),ax=ax,levels = [0,0.05,2],hatches=['///','....',''],fill=False,add_colorbar=False)
-    #         ax.set_title(temptitle)
-    #         ax.set_xlabel('')
-    #         ax.set_ylabel('')
-
-
-    # plt.savefig(fig,"foo.pdf", format = 'pdf', bbox_inches='tight')
-    # plt.savefig(pdffname, format = 'pdf', bbox_inches='tight')
-    # plt.show()
 
 def ttest(inparr1,inparr2,dims):
     # inparr1 = allp2
@@ -137,20 +135,21 @@ def ttest(inparr1,inparr2,dims):
     results['statistic'] = xr.DataArray(test.statistic, coords = arr1.isel({testdimname : 0}).coords)
     results['pvalue'] = xr.DataArray(test.pvalue, coords = arr1.isel({testdimname : 0}).coords)
     results = results.drop(testdimname)
+    results.attrs = arr1.attrs
     results.attrs['ttest_dims'] = 't-test made along dimensions: ' + ','.join(dims)
     return results
 
 def plot_sig_facet(testresults,*args,**kwargs):
     facet = xr.plot.imshow(testresults['diff'],*args,**kwargs)
 
-    matplotlib.rcParams['hatch.linewidth'] = 0.05
+    matplotlib.rcParams['hatch.linewidth'] = 0.1
 
     for (i,j), ax in np.ndenumerate(facet.axes):
         temptitle = ax.get_title()
         namedict = (facet.name_dicts[i,j])
         # namedict will come up none if thats an empty tile
         if namedict is not None:
-            xr.plot.contourf(testresults['pvalue'].sel(**namedict),ax=ax,levels = [0,0.05,2],hatches=['///','....',''],alpha = 0,add_colorbar=False)
+            xr.plot.contourf(testresults['pvalue'].sel(**namedict),ax=ax,levels = [0,0.01,0.05,2],hatches=['///','...',' '],alpha = 0,add_colorbar=False)
             # xr.plot.contourf(test_rcp85['pvalue'].sel(**namedict),ax=ax,levels = [0,0.05,2],hatches=['///','....',''],fill=False,add_colorbar=False)
             ax.set_title(temptitle)
             ax.set_xlabel('')
