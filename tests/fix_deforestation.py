@@ -57,7 +57,7 @@ def main():
         arr = arr.rename(dict(zip(list(arr.dims),[i[3:6] if i[0:3] == 'lsm' else i for i in list(arr.dims)])))
         # arr = arr.sel(time = years, lat = slice(minlat,maxlat), lon = slice(minlon,maxlon))
         arr = arr.sel(time = slice(np.min(years),np.max(years)), lat = slice(minlat,maxlat), lon = slice(minlon,maxlon))
-        arr.to_netcdf(outfname,encoding={'zlib': True, 'complevel': 9})
+        arr.to_netcdf(outfname)
         # arr.name = scenario
         # allarrays.append(arr)
 
