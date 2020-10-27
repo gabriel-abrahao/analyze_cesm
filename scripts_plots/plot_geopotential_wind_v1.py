@@ -25,7 +25,8 @@ refeyear = 2005
 
 reffname = "../refdata/historical/historical_0.0_heg_ensmean_pres_" + str(refsyear) + "_" + str(refeyear) + ".nc"
 
-contvarname = "Z3"
+# contvarname = "Z3"
+contvarname = "PRECT"
 
 domain = "SAMATL" # South america and Atlantic Ocean
 domain = "BR"
@@ -212,10 +213,9 @@ reswind.vcRefMagnitudeF         = windrefmag             # define vector ref mag
 plots = []
 figstrs = []
 for usemon in usemons:
-    # contres.tiMainString = usemon
-    contplot = Ngl.contour_map(wks,refds["Z3"].sel(lev = uselev, month = usemon).to_masked_array(),contres)
-    dswind = refds.sel(lev = uselev, month = usemon)
-    windplot = Ngl.vector(wks,dswind["U"].to_masked_array(),dswind["V"].to_masked_array(),reswind)
+    dssubset = refds.sel(lev = uselev, month = usemon)
+    contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),contres)
+    windplot = Ngl.vector(wks,dssubset["U"].to_masked_array(),dssubset["V"].to_masked_array(),reswind)
     Ngl.overlay(contplot,windplot)
     plots.append(contplot)
     figstrs.append("historical | " + monstrs[usemon])
@@ -287,10 +287,13 @@ scenarios = deltads.scenario.values.tolist()
 #     for usemon in usemons:
 for usemon in usemons:
     for scen in scenarios:
-        contres.tiMainString = usemon
-        contplot = Ngl.contour_map(wks,deltads[contvarname].sel(lev = uselev, month = usemon, scenario = scen).to_masked_array(),scontres)
-        dswind = deltads.sel(lev = uselev, month = usemon, scenario = scen)
-        windplot = Ngl.vector(wks,dswind["U"].to_masked_array(),dswind["V"].to_masked_array(),sreswind)
+        # contres.tiMainString = usemon
+        dssubset = deltads.sel(lev = uselev, month = usemon, scenario = scen)
+        contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),contres)
+        windplot = Ngl.vector(wks,dssubset["U"].to_masked_array(),dssubset["V"].to_masked_array(),reswind)
+        # contplot = Ngl.contour_map(wks,deltads[contvarname].sel(lev = uselev, month = usemon, scenario = scen).to_masked_array(),scontres)
+        # dswind = deltads.sel(lev = uselev, month = usemon, scenario = scen)
+        # windplot = Ngl.vector(wks,dswind["U"].to_masked_array(),dswind["V"].to_masked_array(),sreswind)
         Ngl.overlay(contplot,windplot)
         splots.append(contplot)
         sfigstrs.append(str(scen) + " | " + monstrs[usemon])
@@ -384,10 +387,13 @@ scenarios = efds.scenario.values.tolist()
 #     for usemon in usemons:
 for usemon in usemons:
     for scen in scenarios:
-        contres.tiMainString = usemon
-        contplot = Ngl.contour_map(wks,efds[contvarname].sel(lev = uselev, month = usemon, scenario = scen).to_masked_array(),efcontres)
-        dswind = efds.sel(lev = uselev, month = usemon, scenario = scen)
-        windplot = Ngl.vector(wks,dswind["U"].to_masked_array(),dswind["V"].to_masked_array(),efreswind)
+        # contres.tiMainString = usemon
+        dssubset = efds.sel(lev = uselev, month = usemon, scenario = scen)
+        contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),contres)
+        windplot = Ngl.vector(wks,dssubset["U"].to_masked_array(),dssubset["V"].to_masked_array(),reswind)
+        # contplot = Ngl.contour_map(wks,efds[contvarname].sel(lev = uselev, month = usemon, scenario = scen).to_masked_array(),efcontres)
+        # dswind = efds.sel(lev = uselev, month = usemon, scenario = scen)
+        # windplot = Ngl.vector(wks,dswind["U"].to_masked_array(),dswind["V"].to_masked_array(),efreswind)
         Ngl.overlay(contplot,windplot)
         efplots.append(contplot)
         effigstrs.append(str(scen) + " | " + monstrs[usemon])
