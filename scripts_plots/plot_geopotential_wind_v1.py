@@ -26,12 +26,16 @@ refeyear = 2005
 reffname = "../refdata/historical/historical_0.0_heg_ensmean_pres_" + str(refsyear) + "_" + str(refeyear) + ".nc"
 
 # contvarname = "Z3"
-contvarname = "PRECT"
+# contvarname = "PRECT"
+contvarname = "TREFHT"
 
-domain = "SAMATL" # South america and Atlantic Ocean
-domain = "BR"
+# domain = "SAMATL" # South america and Atlantic Ocean
+domain = "BR" # Zoom in Brazil
 
+# Months to plot
 usemons = [9,10,11,12]
+
+# Level (Pa) for all plots, or just for wind if it's a surface variable
 uselev = 85000
 # uselev = 20000
 
@@ -39,30 +43,73 @@ plotfname = "../output_plots/deltahist_wind_" + domain + "_" + contvarname + "_"
 efplotfname = "../output_plots/effects_wind_" + domain + "_" + contvarname + "_" + str(int(uselev/100))
 wks_type = "png"
 
-# Variable and level dependent plotting parameters
+# ================= Variable and level dependent plotting parameters
+# WARNING: Below are some predefined values of many of these 
+# for specific variables which will override values in this section
+
+# Reference magnitude for wind vectors. Units should be m/s.
 windrefmag = 10.0
 deltarefmag = 10.0
 efrefmag = 10.0
 
 # Default colormaps are red is higher. Reverse for things like pressure/height and precipitation
-reversecolormap = True 
+reversecolormap = False 
+reversedeltacolormap = True
 
-# Z3 850hPa
+# Override the cnFillPallete resource in the level plots 
+icolormapoverride   = True
+colormapoverride    = "WhiteBlue"
+
+# Levels
 contlevels  = np.arange(1300,1600,25)
 deltalevels = np.arange(-50,60,10)
 eflevels = np.arange(-14,15,1)
 
+# ===================== Predefined configurations for some variables
+# # Z3 850hPa
+# contlevels  = np.arange(1500,1600,10)
+# deltalevels = np.arange(-50,60,10)
+# eflevels = np.arange(-14,15,1)
+# reversecolormap = True 
+# reversedeltacolormap = True
+# icolormapoverride   = False
+
 # # Z3 200hPa
 # contlevels  = np.arange(12000,12500,50)
 # deltalevels = np.arange(-100,120,20)
+# reversecolormap = True 
+# reversedeltacolormap = True
+# icolormapoverride   = False
 
-# Remove the 0 in the middle of deltalevels
+# # PRECT
+# contlevels  = np.arange(0,10,1)
+# deltalevels = np.arange(-3,3.1,0.5)
+# eflevels = np.arange(-2,2.1,0.25)
+# reversecolormap = False 
+# reversedeltacolormap = True
+# icolormapoverride   = True
+# colormapoverride    = "WhiteBlue"
+
+# TREFHT
+contlevels  = np.arange(293,303,2)
+deltalevels = np.arange(-4,4.1,.5)
+eflevels = np.arange(-3,3.1,0.25)
+reversecolormap = False 
+reversedeltacolormap = False
+icolormapoverride   = False
+
+
+#%%
+# Derived configurations
+
+# Remove the 0 in the middle of deltalevels, so the white spans both positive and negative sides
+# Do the same for eflevels, which are also anomalies
 deltalevels = np.delete(deltalevels,np.where(deltalevels == 0))
 eflevels = np.delete(eflevels,np.where(eflevels == 0))
 
-# ======== Domains
+# ==================================================== Domains
 # South America and part of the adjoining Atlantic Ocean
-if domain == "SAMA":
+if domain == "SAMATL":
     minlat = -61
     maxlat = 15
     minlon = 273
@@ -73,6 +120,18 @@ if domain == "BR":
     maxlat = 7
     minlon = 287
     maxlon = 328
+
+# ================================================== Unit conversions
+# List of all variables that need conversion
+# Also insert appropriate long_name and unit attributes as needed
+convvarnames = ["PRECT"]
+if contvarname == "PRECT":
+    contlongname = "Total Precipitation"
+    unitfrom = "m/s"
+    unitto = "mm/day"
+    convfac = 86400000.0 # m/s to mm/day
+    convsum = 0.0
+    
 
 # %%
 # Set up a bounding box right outside the plotting area so the wind vectors are nice
@@ -119,15 +178,29 @@ refds = refds.assign_coords(lon = bigdsin["lon"].data)
 
 
 # %%
+# Convert units in the contour variable only if needed
+# and add a long_name attribute if we don't have one
+if contvarname in convvarnames:
+    bigdsin[contvarname] = bigdsin[contvarname]*convfac + convsum
+    bigdsin[contvarname].attrs["units"] = unitto
+    bigdsin[contvarname].attrs["long_name"] = contlongname
+    refds[contvarname] = refds[contvarname]*convfac + convsum
+    refds[contvarname].attrs["units"] = unitto
+    refds[contvarname].attrs["long_name"] = contlongname
+
 # Delta between scenarios and reference
+# Copy each variable's metadatada
 deltads = bigdsin - refds
+for varname in deltads.data_vars:
+    for attname in bigdsin[varname].attrs:
+        deltads[varname].attrs[attname] = bigdsin[varname].attrs[attname]
 
 # %%
 # ===================== BEGIN PLOTS
 labelstring = refds[contvarname].attrs["long_name"] + \
     " (" + refds[contvarname].attrs["units"] + ")"
 
-reflabelstring = labelstring + "~C~ @" + str(int(uselev/100)) + "hPa | " + \
+reflabelstring = labelstring + "~C~ Wind at " + str(int(uselev/100)) + "hPa (m/s)| " + \
     str(refsyear) + "-" + str(refeyear) 
 
 wksres = Ngl.Resources()
@@ -200,6 +273,11 @@ if reversecolormap:
     colormap = colormap[::-1]
 contres.cnFillPalette           =   colormap
 
+# Override
+if icolormapoverride:
+    contres.cnFillPalette           =   colormapoverride
+
+
 contres.cnLevelSelectionMode    =   "ExplicitLevels"
 contres.cnLevels    =   contlevels
 
@@ -248,7 +326,7 @@ panelres.nglFrame = False
 Ngl.panel(wks,plots,[len(usemons),1],panelres)
 
 # ===============================  Resources for scenario plots ===================
-slabelstring = labelstring + "~C~ @" + str(int(uselev/100)) + "hPa | " + \
+slabelstring = labelstring + "~C~ Wind at " + str(int(uselev/100)) + "hPa (m/s)| " + \
     "(" + str(syear) + "-" + str(eyear) + ") - " + \
         "(" + str(refsyear) + "-" + str(refeyear) + ")"
 
@@ -264,7 +342,7 @@ scontres.cnFillMode             = "RasterFill"
 scontres.lbLabelBarOn           = False
 
 scolormap = Ngl.read_colormap_file("BlueWhiteOrangeRed")
-if reversecolormap:
+if reversedeltacolormap:
     scolormap = scolormap[::-1]
 
 # scontres.cnFillPalette           =   "BlueWhiteOrangeRed"
@@ -289,7 +367,7 @@ for usemon in usemons:
     for scen in scenarios:
         # contres.tiMainString = usemon
         dssubset = deltads.sel(lev = uselev, month = usemon, scenario = scen)
-        contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),contres)
+        contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),scontres)
         windplot = Ngl.vector(wks,dssubset["U"].to_masked_array(),dssubset["V"].to_masked_array(),reswind)
         # contplot = Ngl.contour_map(wks,deltads[contvarname].sel(lev = uselev, month = usemon, scenario = scen).to_masked_array(),scontres)
         # dswind = deltads.sel(lev = uselev, month = usemon, scenario = scen)
@@ -349,9 +427,18 @@ allefs.append(bigdsin.sel(scenario = "rcp8.5_weg") - bigdsin.sel(scenario = "rcp
 allefs[4] = allefs[4].expand_dims("scenario")
 allefs[4]["scenario"] = pd.Index(["GHG_DEF"])
 
+# Combine all effects using a scenario dimension
 efds = xr.combine_nested(allefs, concat_dim= "scenario")
 
+# Copy attributes for each variable
+for varname in efds.data_vars:
+    for attname in bigdsin[varname].attrs:
+        efds[varname].attrs[attname] = bigdsin[varname].attrs[attname]
+
+
+
 # %%
+# ======================== BEGIN EFFECTS PLOTS
 # Effects plots. We can copy over the resources from the scenario plots
 # del wks
 wksres = Ngl.Resources()
@@ -359,7 +446,7 @@ wksres.wkHeight = 2048
 wksres.wkWidth = 2048
 wks = Ngl.open_wks(wks_type,efplotfname,wksres)  # Open a workstation.
 
-eflabelstring = labelstring + "~C~ @" + str(int(uselev/100)) + "hPa"
+eflabelstring = labelstring + "~C~ Wind at " + str(int(uselev/100)) + "hPa (m/s)"
 
 # Deep copying resources
 efcontres = copy.deepcopy(scontres)
@@ -389,8 +476,8 @@ for usemon in usemons:
     for scen in scenarios:
         # contres.tiMainString = usemon
         dssubset = efds.sel(lev = uselev, month = usemon, scenario = scen)
-        contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),contres)
-        windplot = Ngl.vector(wks,dssubset["U"].to_masked_array(),dssubset["V"].to_masked_array(),reswind)
+        contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),efcontres)
+        windplot = Ngl.vector(wks,dssubset["U"].to_masked_array(),dssubset["V"].to_masked_array(),efreswind)
         # contplot = Ngl.contour_map(wks,efds[contvarname].sel(lev = uselev, month = usemon, scenario = scen).to_masked_array(),efcontres)
         # dswind = efds.sel(lev = uselev, month = usemon, scenario = scen)
         # windplot = Ngl.vector(wks,dswind["U"].to_masked_array(),dswind["V"].to_masked_array(),efreswind)
