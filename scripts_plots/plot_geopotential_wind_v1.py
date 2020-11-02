@@ -25,22 +25,41 @@ refeyear = 2005
 
 reffname = "../refdata/historical/historical_0.0_heg_ensmean_pres_" + str(refsyear) + "_" + str(refeyear) + ".nc"
 
-# contvarname = "Z3"
+# Contour variable
+contvarname = "Z3"
 # contvarname = "PRECT"
-contvarname = "TREFHT"
+# contvarname = "TREFHT"
 
+# String wih the type of overlay, or "none" for no overlay
+# overlaytype = "none"
+overlaytype = "wind"
+
+# Domain string, limits are defined for each one further below
 # domain = "SAMATL" # South america and Atlantic Ocean
 domain = "BR" # Zoom in Brazil
 
-# Months to plot
-usemons = [9,10,11,12]
+# Time type
+timetype = "monthly"
+# timetype = "seasonal"
+
+if timetype == "seasonal":
+    # Months (seasons) to plot
+    usemons = [1,2,3,4]
+elif timetype == "monthly":
+    # Months to plot
+    usemons = [9,10,11,12]
+else:
+    print("Unkown time type")
+    print(timetype)
+
+
 
 # Level (Pa) for all plots, or just for wind if it's a surface variable
 uselev = 85000
 # uselev = 20000
 
-plotfname = "../output_plots/deltahist_wind_" + domain + "_" + contvarname + "_" + str(int(uselev/100))
-efplotfname = "../output_plots/effects_wind_" + domain + "_" + contvarname + "_" + str(int(uselev/100))
+plotfname   = "../output_plots/" + timetype + "/deltahist_" + overlaytype + "_" + domain + "_" + contvarname + "_" + str(int(uselev/100))
+efplotfname = "../output_plots/" + timetype + "/effects_" + overlaytype + "_" + domain + "_" + contvarname + "_" + str(int(uselev/100))
 wks_type = "png"
 
 # ================= Variable and level dependent plotting parameters
@@ -66,37 +85,44 @@ deltalevels = np.arange(-50,60,10)
 eflevels = np.arange(-14,15,1)
 
 # ===================== Predefined configurations for some variables
-# # Z3 850hPa
-# contlevels  = np.arange(1500,1600,10)
-# deltalevels = np.arange(-50,60,10)
-# eflevels = np.arange(-14,15,1)
-# reversecolormap = True 
-# reversedeltacolormap = True
-# icolormapoverride   = False
+# Z3 850hPa
+if contvarname == "Z3" and uselev == 85000:
+    contlevels  = np.arange(1500,1600,10)
+    # deltalevels = np.arange(-50,60,10)
+    deltalevels = np.arange(-30,31,5)
+    # eflevels = np.arange(-14,15,1)
+    eflevels = np.arange(-10,10.1,1)
+    reversecolormap = True 
+    reversedeltacolormap = True
+    icolormapoverride   = False
 
 # # Z3 200hPa
-# contlevels  = np.arange(12000,12500,50)
-# deltalevels = np.arange(-100,120,20)
-# reversecolormap = True 
-# reversedeltacolormap = True
-# icolormapoverride   = False
+elif contvarname == "Z3" and uselev == 20000:
+    contlevels  = np.arange(12000,12500,50)
+    deltalevels = np.arange(-100,120,20)
+    eflevels = np.arange(-36,36.1,3)
+    reversecolormap = True 
+    reversedeltacolormap = True
+    icolormapoverride   = False
 
 # # PRECT
-# contlevels  = np.arange(0,10,1)
-# deltalevels = np.arange(-3,3.1,0.5)
-# eflevels = np.arange(-2,2.1,0.25)
-# reversecolormap = False 
-# reversedeltacolormap = True
-# icolormapoverride   = True
-# colormapoverride    = "WhiteBlue"
+elif contvarname == "PRECT":
+    contlevels  = np.arange(0,10,1)
+    deltalevels = np.arange(-3,3.1,0.5)
+    eflevels = np.arange(-2,2.1,0.25)
+    reversecolormap = False 
+    reversedeltacolormap = True
+    icolormapoverride   = True
+    colormapoverride    = "WhiteBlue"
 
-# TREFHT
-contlevels  = np.arange(293,303,2)
-deltalevels = np.arange(-4,4.1,.5)
-eflevels = np.arange(-3,3.1,0.25)
-reversecolormap = False 
-reversedeltacolormap = False
-icolormapoverride   = False
+# # TREFHT
+elif contvarname == "PRECT":
+    contlevels  = np.arange(293,303,2)
+    deltalevels = np.arange(-4,4.1,.5)
+    eflevels = np.arange(-3,3.1,0.25)
+    reversecolormap = False 
+    reversedeltacolormap = False
+    icolormapoverride   = False
 
 
 #%%
@@ -133,7 +159,12 @@ if contvarname == "PRECT":
     convsum = 0.0
     
 
-# %%
+# %% Self setups
+
+# Create the output folder
+os.makedirs(os.path.dirname(plotfname), exist_ok=True)
+os.makedirs(os.path.dirname(efplotfname), exist_ok=True)
+
 # Set up a bounding box right outside the plotting area so the wind vectors are nice
 rminlat = minlat-3
 rmaxlat = maxlat+3
@@ -144,6 +175,13 @@ rmaxlon = maxlon+3
 monstrs = {1:"Jan",2:"Feb",3:"Mar",4:"Apr",\
     5:"May",6:"Jun",7:"Jul",8:"Ago",9:"Sep",\
         10:"Oct",11:"Nov",12:"Dec"}
+
+# Conversion values from months to seasons
+seasvals = [1,1,2,2,2,3,3,3,4,4,4,1]
+
+if timetype == "seasonal":
+    # Month (season) numbers to strings
+    monstrs = {1:"DJF",2:"MAM",3:"JJA",4:"SON"}
 
 #%%
 # Assume that there is a folder with each scenario, and right inside 
@@ -175,6 +213,18 @@ refds = refds.rename_dims(plev = "lev").rename_vars(plev = "lev")
 
 refds = refds.assign_coords(lat = bigdsin["lat"].data)
 refds = refds.assign_coords(lon = bigdsin["lon"].data)
+
+# %%
+# Change time type if asked
+if timetype == "seasonal":
+    refds["month"] = seasvals
+    refds = refds.groupby("month").mean(keep_attrs = True)
+    bigdsin["month"] = seasvals
+    bigdsin = bigdsin.groupby("month").mean(keep_attrs = True)
+    
+
+# .plot(col = "month", vmin = 293, cmap = "YlOrRd")
+# refds["TREFHT"].plot(col = "month", col_wrap=3, vmin = 293, cmap = "YlOrRd")
 
 
 # %%
@@ -287,14 +337,17 @@ reswind = add_wind_common_resources(reswind)
 
 reswind.vcRefMagnitudeF         = windrefmag             # define vector ref mag
 
-# Plots
+# Reference Plots
 plots = []
 figstrs = []
 for usemon in usemons:
     dssubset = refds.sel(lev = uselev, month = usemon)
     contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),contres)
-    windplot = Ngl.vector(wks,dssubset["U"].to_masked_array(),dssubset["V"].to_masked_array(),reswind)
-    Ngl.overlay(contplot,windplot)
+
+    if overlaytype == "wind":
+        windplot = Ngl.vector(wks,dssubset["U"].to_masked_array(),dssubset["V"].to_masked_array(),reswind)
+        Ngl.overlay(contplot,windplot)
+    
     plots.append(contplot)
     figstrs.append("historical | " + monstrs[usemon])
 
@@ -368,11 +421,11 @@ for usemon in usemons:
         # contres.tiMainString = usemon
         dssubset = deltads.sel(lev = uselev, month = usemon, scenario = scen)
         contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),scontres)
-        windplot = Ngl.vector(wks,dssubset["U"].to_masked_array(),dssubset["V"].to_masked_array(),reswind)
-        # contplot = Ngl.contour_map(wks,deltads[contvarname].sel(lev = uselev, month = usemon, scenario = scen).to_masked_array(),scontres)
-        # dswind = deltads.sel(lev = uselev, month = usemon, scenario = scen)
-        # windplot = Ngl.vector(wks,dswind["U"].to_masked_array(),dswind["V"].to_masked_array(),sreswind)
-        Ngl.overlay(contplot,windplot)
+
+        if overlaytype == "wind":
+            windplot = Ngl.vector(wks,dssubset["U"].to_masked_array(),dssubset["V"].to_masked_array(),reswind)
+            Ngl.overlay(contplot,windplot)
+
         splots.append(contplot)
         sfigstrs.append(str(scen) + " | " + monstrs[usemon])
 
@@ -477,11 +530,11 @@ for usemon in usemons:
         # contres.tiMainString = usemon
         dssubset = efds.sel(lev = uselev, month = usemon, scenario = scen)
         contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),efcontres)
-        windplot = Ngl.vector(wks,dssubset["U"].to_masked_array(),dssubset["V"].to_masked_array(),efreswind)
-        # contplot = Ngl.contour_map(wks,efds[contvarname].sel(lev = uselev, month = usemon, scenario = scen).to_masked_array(),efcontres)
-        # dswind = efds.sel(lev = uselev, month = usemon, scenario = scen)
-        # windplot = Ngl.vector(wks,dswind["U"].to_masked_array(),dswind["V"].to_masked_array(),efreswind)
-        Ngl.overlay(contplot,windplot)
+        
+        if overlaytype == "wind":
+            windplot = Ngl.vector(wks,dssubset["U"].to_masked_array(),dssubset["V"].to_masked_array(),efreswind)
+            Ngl.overlay(contplot,windplot)
+
         efplots.append(contplot)
         effigstrs.append(str(scen) + " | " + monstrs[usemon])
 
