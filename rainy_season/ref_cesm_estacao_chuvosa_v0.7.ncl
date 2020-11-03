@@ -13,13 +13,13 @@ begin ;SCRIPT
 
 ;infolder		=	"input/sheffield/"
 ;outfolder		=	"saidas/sheffield/"
-infolder		=	"../input/rcp_daily/" + scenario + "/run/"
-outfolder		=	"../output_rainy_season/" + scenario + "/"
+infolder		=	"../refdata/ccsm4/2d/r1l1p1/prec_daily/"
+outfolder		=	"../refdata/historical/"
 
-invarname		=	"PRECT"
+invarname		=	"pr"
 
-prefix			=	"" + scenario + ".cam2.h1."
-suffix			=	"-01-01-00000.nc"
+prefix			=	"prec.daily."
+suffix			=	".nc"
 
 
 ; mskfile			=	"mascara_tudo.nc"
@@ -27,8 +27,8 @@ suffix			=	"-01-01-00000.nc"
 
 ;syear			=	2009
 ;eyear			=	2049	;Keep in mind that we also need the year after this one to compute the "agricultural year"
-syear			=	2005
-eyear			=	2049	;Keep in mind that we also need the year after this one to compute the "agricultural year"
+syear			=	1990
+eyear			=	2004	;Keep in mind that we also need the year after this one to compute the "agricultural year"
 
 baseval			=	2.5
 
@@ -149,7 +149,9 @@ print((/ndays/))
 	end if	
 
 	; Convert units
-	varin = varin*86400000.0
+	; varin = varin*86400000.0 ; From m/s
+	; varin@units = "mm/day"
+	varin = varin*86400.0 ; From kg m-2 s-1
 	varin@units = "mm/day"
 
 	aaout = varin ;Anomalous accumulation
