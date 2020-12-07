@@ -9,38 +9,73 @@ from datetime import datetime
 import xarray as xr
 import numpy as np
 import pandas as pd
+from scipy.stats import ttest_ind_from_stats
 import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
 # %matplotlib inline
 
+
 #%%
+# Allows for folder and variable setup specific for rainy season analysis
+# isrs = True
+isrs = False
+
 # REMEMBER PATHS ARE RELATIVE TO THE SCRIPT FOLDER!
 motherfolder = "../"
 baseinfolder = motherfolder + "output/" # Below here should be scenario folders, and below them the files
+if isrs:
+    baseinfolder = motherfolder + "output_rainy_season/ensemble/"
 syear = 2040
 eyear = 2050
-insuf = "_ensmean_pres_" + str(syear) + "_" + str(eyear) + ".nc"
 refsyear = 1990
 refeyear = 2005
 
+# Number of observations in each period (nyears*nmembers)
+nobs = (eyear-syear+1)*4
+refnobs = (refeyear-refsyear+1)*4
+
+# Subtract the last year, since RS considers planting years
+if isrs:
+    eyear -= 1
+    refeyear -= 1
+
+# Suffix appended to the scenario name
+insuf = "_ensmean_pres_" + str(syear) + "_" + str(eyear) + ".nc"
 reffname = "../refdata/historical/historical_0.0_heg_ensmean_pres_" + str(refsyear) + "_" + str(refeyear) + ".nc"
 
+# If we are using the rainy season, we have to get yearly files and subset and mean later
+if isrs:
+    insuf = "rs_allyears_ens_2.5_2005_2049.nc"
+    reffname = "../refdata/historical/rs_allyears_2.5_1990_2004.nc"
+
+
 # Contour variable
-contvarname = "Z3"
-# contvarname = "PRECT"
+# contvarname = "Z3"
+contvarname = "PRECT"
 # contvarname = "TREFHT"
+# contvarname = "outslen"
 
 # String wih the type of overlay, or "none" for no overlay
 # overlaytype = "none"
 overlaytype = "wind"
+
+# List of strings with where we should set non-significant points to NaN
+# "over" means the overlay
+sigmodes = ["over","cont"]
+# sigmodes = []
+
+# Significance level threshold
+siglev = 0.1
 
 # Domain string, limits are defined for each one further below
 # domain = "SAMATL" # South america and Atlantic Ocean
 domain = "BR" # Zoom in Brazil
 
 # Time type
-timetype = "monthly"
-# timetype = "seasonal"
+# timetype = "monthly"
+timetype = "seasonal"
+if isrs:
+    timetype = "yearly"
 
 if timetype == "seasonal":
     # Months (seasons) to plot
@@ -48,6 +83,8 @@ if timetype == "seasonal":
 elif timetype == "monthly":
     # Months to plot
     usemons = [9,10,11,12]
+elif timetype == "yearly":
+    usemons = [1]
 else:
     print("Unkown time type")
     print(timetype)
@@ -57,9 +94,11 @@ else:
 # Level (Pa) for all plots, or just for wind if it's a surface variable
 uselev = 85000
 # uselev = 20000
+if isrs:
+    uselev = 1
 
-plotfname   = "../output_plots/" + timetype + "/deltahist_" + overlaytype + "_" + domain + "_" + contvarname + "_" + str(int(uselev/100))
-efplotfname = "../output_plots/" + timetype + "/effects_" + overlaytype + "_" + domain + "_" + contvarname + "_" + str(int(uselev/100))
+plotfname   = "../output_plots/" + timetype + "/deltahist_" + overlaytype + "_" + domain + "_" + contvarname + "_sig_" + "_".join(sigmodes) +  "_" + str(int(uselev/100))
+efplotfname = "../output_plots/" + timetype + "/effects_" + overlaytype + "_" + domain + "_" + contvarname   + "_sig_" + "_".join(sigmodes) +  "_" + str(int(uselev/100))
 wks_type = "png"
 
 # ================= Variable and level dependent plotting parameters
@@ -116,13 +155,25 @@ elif contvarname == "PRECT":
     colormapoverride    = "WhiteBlue"
 
 # # TREFHT
-elif contvarname == "PRECT":
+elif contvarname == "TREFHT":
     contlevels  = np.arange(293,303,2)
     deltalevels = np.arange(-4,4.1,.5)
-    eflevels = np.arange(-3,3.1,0.25)
+    # eflevels = np.arange(-3,3.1,0.25)
+    eflevels = np.arange(-2,2.1,0.25)
     reversecolormap = False 
     reversedeltacolormap = False
     icolormapoverride   = False
+# # outslen
+elif contvarname == "outslen":
+    contlevels  = np.arange(100,250,10)
+    deltalevels = np.arange(-15,15.1,1)
+    # eflevels = np.arange(-3,3.1,0.25)
+    eflevels = np.arange(-15,15.1,1)
+    reversecolormap = False 
+    reversedeltacolormap = False
+    icolormapoverride   = False
+else:
+    print("WARNING: No preset for variable " + contvarname)
 
 
 #%%
@@ -148,16 +199,45 @@ if domain == "BR":
     maxlon = 328
 
 # ================================================== Unit conversions
-# List of all variables that need conversion
+# List of all variables that need conversion or metadata fixing
 # Also insert appropriate long_name and unit attributes as needed
-convvarnames = ["PRECT"]
+convvarnames = ["PRECT", "outslen", "outoday", "outeday"]
 if contvarname == "PRECT":
     contlongname = "Total Precipitation"
     unitfrom = "m/s"
     unitto = "mm/day"
     convfac = 86400000.0 # m/s to mm/day
     convsum = 0.0
-    
+elif contvarname == "outslen":
+    contlongname = "Rainy season length"
+    unitfrom = "n/a"
+    unitto = "days"
+    convfac = 1.0 # unchanged
+    convsum = 0.0
+elif contvarname == "outoday":
+    contlongname = "Rainy season onset day"
+    unitfrom = "n/a"
+    unitto = "days since Jul 1"
+    convfac = 1.0 # unchanged
+    convsum = 0.0
+elif contvarname == "outeday":
+    contlongname = "Rainy season end day"
+    unitfrom = "n/a"
+    unitto = "days since Jul 1"
+    convfac = 1.0 # unchanged
+    convsum = 0.0
+
+
+# ================================================== Variables
+# Select these variables for performing t-tests. xr.apply_ufunc
+# is apparently not good at lazy loading, and will calculate
+# t-tests for all variables in the datasets
+if overlaytype == "none":
+    overvars = []
+elif overlaytype == "wind":
+    overvars = ["U","V"]
+
+
 
 # %% Self setups
 
@@ -182,6 +262,106 @@ seasvals = [1,1,2,2,2,3,3,3,4,4,4,1]
 if timetype == "seasonal":
     # Month (season) numbers to strings
     monstrs = {1:"DJF",2:"MAM",3:"JJA",4:"SON"}
+elif timetype == "yearly":
+    # Month (season) numbers to strings
+    monstrs = {1:""}
+
+#%% Function definitions
+
+# Add a suffix to all variables in a Dataset
+def add_suf(ds,suf):
+    return(ds.rename({i:(i + suf) for i in ds.data_vars}))
+
+# Removes a suffix from all variables in a Dataset
+def rem_suf(ds,suf):
+    return(ds.rename({i:(re.sub("(.*)"+suf+"$","\g<1>",i)) for i in ds.data_vars}))
+
+# Splits a dataset that has means and variances coded by name. 
+# e.g. the mean of variable X is in variable X and it's variance is in X_val
+def split_dataset_variances(dsboth, selvars, uselev):
+    regexvar = re.compile(".*_var$")
+    dsmeans = dsboth[[i for i in dsboth.data_vars if not regexvar.match(i)]]
+    dsvariances = dsboth[[i for i in dsboth.data_vars if regexvar.match(i)]]
+    dsvariances = dsvariances.rename({i:(re.sub("(.*)_var$","\g<1>",i)) for i in dsvariances.data_vars})
+
+    # Select just the desired variables
+    dsmeans = dsmeans[selvars]
+    dsvariances = dsvariances[selvars]
+
+    # If any of selvars has lev, select the single uselev
+    # Using slice like this here ensures lev is kept as a singleton dimension
+    if "lev" in dsmeans.coords:
+        dsmeans = dsmeans.sel(lev=slice(uselev,uselev))
+        dsvariances = dsvariances.sel(lev=slice(uselev,uselev))
+
+    # Add a singleton lev variable to single level variables
+    # TODO: The order of dimensions is not kept the same here
+    # Shouldn't be a problem though since we'll select a single 
+    # slice in the main script
+    for v in dsmeans.data_vars:
+        if "lev" not in dsmeans[v].coords:
+            dsmeans[v] = dsmeans[v].expand_dims("lev").assign_coords({"lev" : [uselev]})
+            dsvariances[v] = dsvariances[v].expand_dims("lev").assign_coords({"lev" : [uselev]})
+
+
+    # Using slice like this here ensures lev is kept as a singleton dimension
+    # dsmeans = dsmeans[selvars].sel(lev=slice(uselev,uselev))
+    # dsvariances = dsvariances[selvars].sel(lev=slice(uselev,uselev))
+    return((dsmeans, dsvariances))
+
+# Calculates the difference between "contvarname" and "overvars" in a dataset
+# and also returns a "contvarname"_pval variable with the p-values of a
+# t-test on the difference of two means given a "contvarname"_var variable
+def calc_diff_ttest(dsboth1, dsboth2, contvarname, overvars, sigmodes, uselev, nobs):
+    selvars = [contvarname]
+    selvars.extend(overvars)
+
+    (dsmeans1, dsvariances1) = split_dataset_variances(dsboth1, selvars, uselev)
+    (dsmeans2, dsvariances2) = split_dataset_variances(dsboth2, selvars, uselev)
+
+    diff = dsmeans1 - dsmeans2
+
+    if len(sigmodes) == 0:
+        return(diff)
+    else:
+
+        testvarnames = [contvarname]
+        if "over" in sigmodes:
+            testvarnames.extend(overvars)
+
+        dsttest = xr.apply_ufunc(
+                ttest_ind_from_stats,
+                dsmeans1[testvarnames],
+                dsvariances1[testvarnames]**0.5,
+                nobs,
+                dsmeans2[testvarnames],
+                dsvariances2[testvarnames]**0.5,
+                nobs,
+                True,
+                input_core_dims=[[], [], [], [], [], [], []],
+                output_core_dims=[[], []],
+                vectorize=True,
+                # keep_attrs=True,
+                dask='parallelized',
+            )[1]
+
+        dsttest = dsttest.rename({i:(i + "_pval") for i in dsttest.data_vars})
+        diff = diff.merge(dsttest)
+        # diff.expand_dims("lev")
+        # diff["lev"] = np.array(uselev)
+        # (diff,dump) = xr.broadcast(diff, dsboth1)
+        return(diff)
+
+# poi = calc_diff_ttest(bigdsin.sel(scenario = "rcp2.6_weg"), bigdsin.sel(scenario = "rcp2.6_seg"), contvarname, overvars, uselev, nobs)
+# poi
+# dsboth1 = bigdsin.sel(scenario = "rcp2.6_weg")
+# dsboth2 = bigdsin.sel(scenario = "rcp2.6_seg")
+
+# Summarise rainy season stats of a dataset over a given period
+# TODO: Currently just the mean
+def summarise_rainy_season(ds, syear, eyear):
+    outds = ds.sel(time = slice(syear,eyear)).mean(dim = "time")
+    return(outds)
 
 #%%
 # Assume that there is a folder with each scenario, and right inside 
@@ -202,17 +382,26 @@ bigdsin = xr.combine_nested([i["ds"] for i in allitems], concat_dim="scenario", 
 # Reorder scenarios
 usescens = ['rcp2.6_seg', 'rcp2.6_weg', 'rcp8.5_seg', 'rcp8.5_weg']
 bigdsin = bigdsin.sel(scenario = usescens)
-# poi = bigdsin["T"].isel(lev = 0, month = 0).sel(scenario = usescens)
-# poi.mean(dim = ["lat","lon"])
+
+# If rainy season, subset the period of interest and 
+# calculate summaries. TODO: By default we'll get the
+# the mean, but we can get other summaries such as 
+# e.g. fraction above a certain number of days
+if isrs:
+    bigdsin = summarise_rainy_season(bigdsin, syear, eyear)
 
 # %%
 # Read reference file, and make sure metada matches
 refds = xr.open_dataset(reffname).\
     sel(lat = slice(rminlat,rmaxlat), lon = slice(rminlon,rmaxlon))
-refds = refds.rename_dims(plev = "lev").rename_vars(plev = "lev")
+if "plev" in refds.coords:
+    refds = refds.rename_dims(plev = "lev").rename_vars(plev = "lev")
 
 refds = refds.assign_coords(lat = bigdsin["lat"].data)
 refds = refds.assign_coords(lon = bigdsin["lon"].data)
+
+if isrs:
+    refds = summarise_rainy_season(refds, syear, eyear)
 
 # %%
 # Change time type if asked
@@ -221,6 +410,9 @@ if timetype == "seasonal":
     refds = refds.groupby("month").mean(keep_attrs = True)
     bigdsin["month"] = seasvals
     bigdsin = bigdsin.groupby("month").mean(keep_attrs = True)
+elif timetype == "yearly":
+    refds = refds.expand_dims(dim={"month":np.array([1]), "lev":np.array([1])})
+    bigdsin = bigdsin.expand_dims(dim={"month":np.array([1]), "lev":np.array([1])})
     
 
 # .plot(col = "month", vmin = 293, cmap = "YlOrRd")
@@ -237,6 +429,16 @@ if contvarname in convvarnames:
     refds[contvarname] = refds[contvarname]*convfac + convsum
     refds[contvarname].attrs["units"] = unitto
     refds[contvarname].attrs["long_name"] = contlongname
+    # Do the same for the variances if applicable
+    contvarnamevariance = contvarname + "_var" 
+    if contvarnamevariance in bigdsin.data_vars:
+        bigdsin[contvarnamevariance] = bigdsin[contvarnamevariance]*convfac**2 + convsum
+        bigdsin[contvarnamevariance].attrs["units"] = unitto
+        bigdsin[contvarnamevariance].attrs["long_name"] = contlongname
+    if contvarnamevariance in refds.data_vars:
+        refds[contvarnamevariance] = refds[contvarnamevariance]*convfac**2 + convsum
+        refds[contvarnamevariance].attrs["units"] = unitto
+        refds[contvarnamevariance].attrs["long_name"] = contlongname
 
 # Delta between scenarios and reference
 # Copy each variable's metadatada
@@ -460,23 +662,28 @@ Ngl.delete_wks(wks)
 # Calculate effects, differences between scenarios
 allefs = []
 # DEF_2.6 
-allefs.append(bigdsin.sel(scenario = "rcp2.6_weg") - bigdsin.sel(scenario = "rcp2.6_seg"))
+# allefs.append(bigdsin.sel(scenario = "rcp2.6_weg") - bigdsin.sel(scenario = "rcp2.6_seg"))
+allefs.append(calc_diff_ttest(bigdsin.sel(scenario = "rcp2.6_weg"), bigdsin.sel(scenario = "rcp2.6_seg"), contvarname, overvars, sigmodes, uselev, nobs))
 allefs[0] = allefs[0].expand_dims("scenario")
 allefs[0]["scenario"] = pd.Index(["DEF_2.6"])
 # DEF_8.5
-allefs.append(bigdsin.sel(scenario = "rcp8.5_weg") - bigdsin.sel(scenario = "rcp8.5_seg"))
+# allefs.append(bigdsin.sel(scenario = "rcp8.5_weg") - bigdsin.sel(scenario = "rcp8.5_seg"))
+allefs.append(calc_diff_ttest(bigdsin.sel(scenario = "rcp8.5_weg"), bigdsin.sel(scenario = "rcp8.5_seg"), contvarname, overvars, sigmodes, uselev, nobs))
 allefs[1] = allefs[1].expand_dims("scenario")
 allefs[1]["scenario"] = pd.Index(["DEF_8.5"])
 # GHG_SEG
-allefs.append(bigdsin.sel(scenario = "rcp8.5_seg") - bigdsin.sel(scenario = "rcp2.6_seg"))
+# allefs.append(bigdsin.sel(scenario = "rcp8.5_seg") - bigdsin.sel(scenario = "rcp2.6_seg"))
+allefs.append(calc_diff_ttest(bigdsin.sel(scenario = "rcp8.5_seg"), bigdsin.sel(scenario = "rcp2.6_seg"), contvarname, overvars, sigmodes, uselev, nobs))
 allefs[2] = allefs[2].expand_dims("scenario")
 allefs[2]["scenario"] = pd.Index(["GHG_SEG"])
 # GHG_WEG
-allefs.append(bigdsin.sel(scenario = "rcp8.5_weg") - bigdsin.sel(scenario = "rcp2.6_weg"))
+# allefs.append(bigdsin.sel(scenario = "rcp8.5_weg") - bigdsin.sel(scenario = "rcp2.6_weg"))
+allefs.append(calc_diff_ttest(bigdsin.sel(scenario = "rcp8.5_weg"), bigdsin.sel(scenario = "rcp2.6_weg"), contvarname, overvars, sigmodes, uselev, nobs))
 allefs[3] = allefs[3].expand_dims("scenario")
 allefs[3]["scenario"] = pd.Index(["GHG_WEG"])
 # GHG_DEF
-allefs.append(bigdsin.sel(scenario = "rcp8.5_weg") - bigdsin.sel(scenario = "rcp2.6_seg"))
+# allefs.append(bigdsin.sel(scenario = "rcp8.5_weg") - bigdsin.sel(scenario = "rcp2.6_seg"))
+allefs.append(calc_diff_ttest(bigdsin.sel(scenario = "rcp8.5_weg"), bigdsin.sel(scenario = "rcp2.6_seg"), contvarname, overvars, sigmodes, uselev, nobs))
 allefs[4] = allefs[4].expand_dims("scenario")
 allefs[4]["scenario"] = pd.Index(["GHG_DEF"])
 
@@ -485,9 +692,9 @@ efds = xr.combine_nested(allefs, concat_dim= "scenario")
 
 # Copy attributes for each variable
 for varname in efds.data_vars:
-    for attname in bigdsin[varname].attrs:
-        efds[varname].attrs[attname] = bigdsin[varname].attrs[attname]
-
+    if varname in bigdsin.data_vars:
+        for attname in bigdsin[varname].attrs:
+            efds[varname].attrs[attname] = bigdsin[varname].attrs[attname]
 
 
 # %%
@@ -523,14 +730,24 @@ efreswind.vcRefAnnoString2On = False
 efplots = []
 effigstrs = []
 scenarios = efds.scenario.values.tolist()
-# for scen in scenarios:
-#     for usemon in usemons:
+# scen = scenarios[0]
+# usemon = usemons[0]
 for usemon in usemons:
     for scen in scenarios:
         # contres.tiMainString = usemon
         dssubset = efds.sel(lev = uselev, month = usemon, scenario = scen)
+        if "cont" in sigmodes:
+            dssubset[contvarname] = dssubset[contvarname].where(dssubset[contvarname+"_pval"]<=siglev,np.nan)
+
         contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),efcontres)
         
+        if "over" in sigmodes and len(overvars) != 0:
+            # Here we mask out only vectors that are non-significant in BOTH dimensions (U, V)
+            overvars_pvals = [i+"_pval" for i in overvars]
+            overmask = xr.apply_ufunc(np.logical_or, (dssubset[overvars_pvals[0]] <= siglev), (dssubset[overvars_pvals[1]] <= siglev))
+            # dssubset = dssubset.merge(dssubset[overvars].where(rem_suf(dssubset[[i+"_pval" for i in overvars]],"_pval")<=siglev,np.nan), overwrite_vars=overvars)
+            dssubset = dssubset.merge(dssubset[overvars].where(overmask,np.nan), overwrite_vars=overvars)
+
         if overlaytype == "wind":
             windplot = Ngl.vector(wks,dssubset["U"].to_masked_array(),dssubset["V"].to_masked_array(),efreswind)
             Ngl.overlay(contplot,windplot)
