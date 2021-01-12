@@ -46,7 +46,7 @@ reffname = "../refdata/historical/historical_0.0_heg_ensmean_pres_" + str(refsye
 # If we are using the rainy season, we have to get yearly files and subset and mean later
 if isrs:
     insuf = "rs_allyears_ens_2.5_2005_2049.nc"
-    reffname = "../refdata/historical/rs_allyears_2.5_1990_2004.nc"
+    reffname = "../refdata/historical/rainy_season/ensemble/historical_heg/rs_allyears_ens_2.5_1990_2004.nc"
 
 
 # Contour variable
@@ -54,6 +54,8 @@ if isrs:
 contvarname = "PRECT"
 # contvarname = "TREFHT"
 # contvarname = "outslen"
+# contvarname = "outoday"
+# contvarname = "outeday"
 
 # String wih the type of overlay, or "none" for no overlay
 # overlaytype = "none"
@@ -65,15 +67,21 @@ sigmodes = ["over","cont"]
 # sigmodes = []
 
 # Significance level threshold
-siglev = 0.1
+siglev = 0.05
+
+# Add text to the figure mentioning the significance level. Override and don't add it if no sigmode
+addsiglabel = True
+if len(sigmodes) == 0:
+    addsiglabel = False
 
 # Domain string, limits are defined for each one further below
+# domain = "BIG1"
 # domain = "SAMATL" # South america and Atlantic Ocean
 domain = "BR" # Zoom in Brazil
 
 # Time type
-# timetype = "monthly"
-timetype = "seasonal"
+timetype = "monthly"
+# timetype = "seasonal"
 if isrs:
     timetype = "yearly"
 
@@ -97,8 +105,8 @@ uselev = 85000
 if isrs:
     uselev = 1
 
-plotfname   = "../output_plots/" + timetype + "/deltahist_" + overlaytype + "_" + domain + "_" + contvarname + "_sig_" + "_".join(sigmodes) +  "_" + str(int(uselev/100))
-efplotfname = "../output_plots/" + timetype + "/effects_" + overlaytype + "_" + domain + "_" + contvarname   + "_sig_" + "_".join(sigmodes) +  "_" + str(int(uselev/100))
+plotfname   = "../output_plots/" + timetype + "/deltahist_" + overlaytype + "_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) +  "_" + str(int(uselev/100))
+efplotfname = "../output_plots/" + timetype + "/effects_" + overlaytype + "_" + domain + "_" + contvarname   + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) +  "_" + str(int(uselev/100))
 wks_type = "png"
 
 # ================= Variable and level dependent plotting parameters
@@ -128,9 +136,9 @@ eflevels = np.arange(-14,15,1)
 if contvarname == "Z3" and uselev == 85000:
     contlevels  = np.arange(1500,1600,10)
     # deltalevels = np.arange(-50,60,10)
-    deltalevels = np.arange(-30,31,5)
+    deltalevels = np.arange(-20,20.1,2)
     # eflevels = np.arange(-14,15,1)
-    eflevels = np.arange(-10,10.1,1)
+    eflevels = np.arange(-5,5.1,1)
     reversecolormap = True 
     reversedeltacolormap = True
     icolormapoverride   = False
@@ -166,12 +174,34 @@ elif contvarname == "TREFHT":
 # # outslen
 elif contvarname == "outslen":
     contlevels  = np.arange(100,250,10)
-    deltalevels = np.arange(-15,15.1,1)
+    deltalevels = np.arange(-20,20.1,)
+    # eflevels = np.arange(-3,3.1,0.25)
+    eflevels = np.arange(-15,15.1,1)
+    reversecolormap = False 
+    reversedeltacolormap = True
+    icolormapoverride   = True
+    colormapoverride    = "WhiteBlue"
+# # outoday
+elif contvarname == "outoday":
+    contlevels  = np.arange(30,150,10)
+    deltalevels = np.arange(-20,20.1,)
     # eflevels = np.arange(-3,3.1,0.25)
     eflevels = np.arange(-15,15.1,1)
     reversecolormap = False 
     reversedeltacolormap = False
     icolormapoverride   = False
+    colormapoverride    = "WhiteBlue"
+# # outeday
+elif contvarname == "outeday":
+    contlevels  = np.arange(240,360,10)
+    deltalevels = np.arange(-20,20.1,)
+    # eflevels = np.arange(-3,3.1,0.25)
+    eflevels = np.arange(-15,15.1,1)
+    reversecolormap = True 
+    reversedeltacolormap = True
+    icolormapoverride   = False
+    colormapoverride    = "WhiteBlue"
+
 else:
     print("WARNING: No preset for variable " + contvarname)
 
@@ -185,6 +215,11 @@ deltalevels = np.delete(deltalevels,np.where(deltalevels == 0))
 eflevels = np.delete(eflevels,np.where(eflevels == 0))
 
 # ==================================================== Domains
+if domain == "BIG1":
+    minlat = -61
+    maxlat = 50
+    minlon = 230
+    maxlon = 360
 # South America and part of the adjoining Atlantic Ocean
 if domain == "SAMATL":
     minlat = -61
@@ -363,6 +398,7 @@ def summarise_rainy_season(ds, syear, eyear):
     outds = ds.sel(time = slice(syear,eyear)).mean(dim = "time")
     return(outds)
 
+
 #%%
 # Assume that there is a folder with each scenario, and right inside 
 # it is a file matching insuf
@@ -387,8 +423,10 @@ bigdsin = bigdsin.sel(scenario = usescens)
 # calculate summaries. TODO: By default we'll get the
 # the mean, but we can get other summaries such as 
 # e.g. fraction above a certain number of days
-if isrs:
-    bigdsin = summarise_rainy_season(bigdsin, syear, eyear)
+# if isrs:
+#     bigdsin = summarise_rainy_season(bigdsin, syear, eyear)
+# if isrs:
+#     bigdsin = bigdsin.expand_dims(["time","lev"])
 
 # %%
 # Read reference file, and make sure metada matches
@@ -400,8 +438,8 @@ if "plev" in refds.coords:
 refds = refds.assign_coords(lat = bigdsin["lat"].data)
 refds = refds.assign_coords(lon = bigdsin["lon"].data)
 
-if isrs:
-    refds = summarise_rainy_season(refds, syear, eyear)
+# if isrs:
+#     refds = summarise_rainy_season(refds, refsyear, refeyear)
 
 # %%
 # Change time type if asked
@@ -758,6 +796,9 @@ for usemon in usemons:
 efpanelres.nglPanelFigureStrings = effigstrs
 efpanelres.lbTitleString = eflabelstring
 
+if addsiglabel:
+    efpanelres.lbTitleString = efpanelres.lbTitleString + "~C~Showing differences significant at " + str(siglev*100) + "%"
+
 efpanelres.nglPanelBottom = 0.0
 efpanelres.nglPanelTop = 1.0
 efpanelres.nglPanelLeft = 0.0
@@ -766,4 +807,5 @@ efpanelres.nglPanelRight = 1.0
 Ngl.panel(wks,efplots,[len(usemons),len(scenarios)],efpanelres) #Freezing here
 
 Ngl.delete_wks(wks)
+print(efplotfname)
 # %%
