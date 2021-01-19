@@ -494,8 +494,9 @@ deltads = calc_diff_ttest(bigdsin, refds, contvarname, overvars, sigmodes, usele
 
 # Copy each variable's metadatada
 for varname in bigdsin.data_vars:
-    for attname in bigdsin[varname].attrs:
-        deltads[varname].attrs[attname] = bigdsin[varname].attrs[attname]
+    if varname in deltads.data_vars:
+        for attname in bigdsin[varname].attrs:
+            deltads[varname].attrs[attname] = bigdsin[varname].attrs[attname]
 
 # %%
 # ===================== BEGIN PLOTS
@@ -636,6 +637,7 @@ slabelstring = labelstring + "~C~ Wind at " + str(int(uselev/100)) + "hPa (m/s)|
         "(" + str(refsyear) + "-" + str(refeyear) + ")"
 
 
+
 # Resources for reference contour/fill plots
 scontres = set_common_resources()
 
@@ -662,6 +664,7 @@ sreswind = add_wind_common_resources(sreswind)
 sreswind.vcRefMagnitudeF         = deltarefmag             # define vector ref mag
 
 
+
 # Scenario Plots
 splots = []
 sfigstrs = []
@@ -673,6 +676,18 @@ for usemon in usemons:
         # contres.tiMainString = usemon
         dssubset = deltads.sel(lev = uselev, month = usemon, scenario = scen)
         contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),scontres)
+
+        if "cont" in sigmodes:
+            dssubset[contvarname] = dssubset[contvarname].where(dssubset[contvarname+"_pval"]<=siglev,np.nan)
+
+        contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),efcontres)
+        
+        if "over" in sigmodes and len(overvars) != 0:
+            # Here we mask out only vectors that are non-significant in BOTH dimensions (U, V)
+            overvars_pvals = [i+"_pval" for i in overvars]
+            overmask = xr.apply_ufunc(np.logical_or, (dssubset[overvars_pvals[0]] <= siglev), (dssubset[overvars_pvals[1]] <= siglev))
+            # dssubset = dssubset.merge(dssubset[overvars].where(rem_suf(dssubset[[i+"_pval" for i in overvars]],"_pval")<=siglev,np.nan), overwrite_vars=overvars)
+            dssubset = dssubset.merge(dssubset[overvars].where(overmask,np.nan), overwrite_vars=overvars)
 
         if overlaytype == "wind":
             windplot = Ngl.vector(wks,dssubset["U"].to_masked_array(),dssubset["V"].to_masked_array(),reswind)
@@ -700,6 +715,9 @@ spanelres.lbTitleString          =   slabelstring
 spanelres.lbTitlePosition          =   "Bottom"
 spanelres.lbTitleFontHeightF          =   0.01
 spanelres.lbJustification          = "TopCenter"
+
+if addsiglabel:
+    spanelres.lbTitleString = spanelres.lbTitleString + "~C~Showing differences significant at " + str(siglev*100) + "%"
 
 Ngl.panel(wks,splots,[len(usemons),len(scenarios)],spanelres)
 
