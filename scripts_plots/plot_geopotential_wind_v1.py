@@ -107,6 +107,8 @@ if isrs:
 
 plotfname   = "../output_plots/" + timetype + "/deltahist_" + overlaytype + "_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) +  "_" + str(int(uselev/100))
 efplotfname = "../output_plots/" + timetype + "/effects_" + overlaytype + "_" + domain + "_" + contvarname   + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) +  "_" + str(int(uselev/100))
+difefplotfname = "../output_plots/" + timetype + "/difeffects_" + overlaytype + "_" + domain + "_" + contvarname   + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) +  "_" + str(int(uselev/100))
+
 wks_type = "png"
 
 # ================= Variable and level dependent plotting parameters
@@ -359,7 +361,7 @@ def calc_diff_ttest(dsboth1, dsboth2, contvarname, overvars, sigmodes, uselev, n
     if len(sigmodes) == 0:
         return(diff)
     else:
-
+        # t-test
         testvarnames = [contvarname]
         if "over" in sigmodes:
             testvarnames.extend(overvars)
@@ -381,7 +383,13 @@ def calc_diff_ttest(dsboth1, dsboth2, contvarname, overvars, sigmodes, uselev, n
             )[1]
 
         dsttest = dsttest.rename({i:(i + "_pval") for i in dsttest.data_vars})
+        
+        # Variance of the difference
+        dsvariances = dsvariances1 + dsvariances2
+        dsvariances = dsvariances.rename({i:(i + "_var") for i in dsvariances.data_vars})
+        
         diff = diff.merge(dsttest)
+        diff = diff.merge(dsvariances)
         # diff.expand_dims("lev")
         # diff["lev"] = np.array(uselev)
         # (diff,dump) = xr.broadcast(diff, dsboth1)
@@ -400,6 +408,7 @@ def summarise_rainy_season(ds, syear, eyear):
 
 
 #%%
+# ============================================= BEGIN READING FILES
 # Assume that there is a folder with each scenario, and right inside 
 # it is a file matching insuf
 scens = os.listdir(baseinfolder)
@@ -478,10 +487,13 @@ if contvarname in convvarnames:
         refds[contvarnamevariance].attrs["units"] = unitto
         refds[contvarnamevariance].attrs["long_name"] = contlongname
 
+#%%
 # Delta between scenarios and reference
+# deltads = bigdsin - refds
+deltads = calc_diff_ttest(bigdsin, refds, contvarname, overvars, sigmodes, uselev, nobs)
+
 # Copy each variable's metadatada
-deltads = bigdsin - refds
-for varname in deltads.data_vars:
+for varname in bigdsin.data_vars:
     for attname in bigdsin[varname].attrs:
         deltads[varname].attrs[attname] = bigdsin[varname].attrs[attname]
 
@@ -702,31 +714,32 @@ allefs = []
 # DEF_2.6 
 # allefs.append(bigdsin.sel(scenario = "rcp2.6_weg") - bigdsin.sel(scenario = "rcp2.6_seg"))
 allefs.append(calc_diff_ttest(bigdsin.sel(scenario = "rcp2.6_weg"), bigdsin.sel(scenario = "rcp2.6_seg"), contvarname, overvars, sigmodes, uselev, nobs))
-allefs[0] = allefs[0].expand_dims("scenario")
-allefs[0]["scenario"] = pd.Index(["DEF_2.6"])
+allefs[len(allefs)-1] = allefs[len(allefs)-1].expand_dims("scenario")
+allefs[len(allefs)-1]["scenario"] = pd.Index(["DEF_2.6"])
 # DEF_8.5
 # allefs.append(bigdsin.sel(scenario = "rcp8.5_weg") - bigdsin.sel(scenario = "rcp8.5_seg"))
 allefs.append(calc_diff_ttest(bigdsin.sel(scenario = "rcp8.5_weg"), bigdsin.sel(scenario = "rcp8.5_seg"), contvarname, overvars, sigmodes, uselev, nobs))
-allefs[1] = allefs[1].expand_dims("scenario")
-allefs[1]["scenario"] = pd.Index(["DEF_8.5"])
+allefs[len(allefs)-1] = allefs[len(allefs)-1].expand_dims("scenario")
+allefs[len(allefs)-1]["scenario"] = pd.Index(["DEF_8.5"])
 # GHG_SEG
 # allefs.append(bigdsin.sel(scenario = "rcp8.5_seg") - bigdsin.sel(scenario = "rcp2.6_seg"))
 allefs.append(calc_diff_ttest(bigdsin.sel(scenario = "rcp8.5_seg"), bigdsin.sel(scenario = "rcp2.6_seg"), contvarname, overvars, sigmodes, uselev, nobs))
-allefs[2] = allefs[2].expand_dims("scenario")
-allefs[2]["scenario"] = pd.Index(["GHG_SEG"])
+allefs[len(allefs)-1] = allefs[len(allefs)-1].expand_dims("scenario")
+allefs[len(allefs)-1]["scenario"] = pd.Index(["GHG_SEG"])
 # GHG_WEG
 # allefs.append(bigdsin.sel(scenario = "rcp8.5_weg") - bigdsin.sel(scenario = "rcp2.6_weg"))
 allefs.append(calc_diff_ttest(bigdsin.sel(scenario = "rcp8.5_weg"), bigdsin.sel(scenario = "rcp2.6_weg"), contvarname, overvars, sigmodes, uselev, nobs))
-allefs[3] = allefs[3].expand_dims("scenario")
-allefs[3]["scenario"] = pd.Index(["GHG_WEG"])
+allefs[len(allefs)-1] = allefs[len(allefs)-1].expand_dims("scenario")
+allefs[len(allefs)-1]["scenario"] = pd.Index(["GHG_WEG"])
 # GHG_DEF
 # allefs.append(bigdsin.sel(scenario = "rcp8.5_weg") - bigdsin.sel(scenario = "rcp2.6_seg"))
 allefs.append(calc_diff_ttest(bigdsin.sel(scenario = "rcp8.5_weg"), bigdsin.sel(scenario = "rcp2.6_seg"), contvarname, overvars, sigmodes, uselev, nobs))
-allefs[4] = allefs[4].expand_dims("scenario")
-allefs[4]["scenario"] = pd.Index(["GHG_DEF"])
+allefs[len(allefs)-1] = allefs[len(allefs)-1].expand_dims("scenario")
+allefs[len(allefs)-1]["scenario"] = pd.Index(["GHG_DEF"])
 
 # Combine all effects using a scenario dimension
 efds = xr.combine_nested(allefs, concat_dim= "scenario")
+
 
 # Copy attributes for each variable
 for varname in efds.data_vars:
@@ -809,3 +822,52 @@ Ngl.panel(wks,efplots,[len(usemons),len(scenarios)],efpanelres) #Freezing here
 Ngl.delete_wks(wks)
 print(efplotfname)
 # %%
+# DIFFERENCES IN DEFORESTATION EFFECTS
+defdifds = calc_diff_ttest(efds.sel(scenario = "DEF_8.5"), efds.sel(scenario = "DEF_2.6"), contvarname, overvars, sigmodes, uselev, nobs)
+defdifds = defdifds.expand_dims("scenario")
+defdifds["scenario"] = pd.Index(["DEF_DIF"])
+
+selscens = ["DEF_8.5", "DEF_2.6", "DEF_DIF"]
+defdifds = defdifds.merge(efds).sel(scenario = selscens)
+defdifds
+
+# %%
+# ======================== BEGIN DIFFERENCES IN DEFORESTATION EFFECTS PLOTS
+#TODO: JUST PASTED FROM PREVIOUS CELLS, THIS DOES NOT WORK YET
+# del wks
+wksres = Ngl.Resources()
+wksres.wkHeight = 2048
+wksres.wkWidth = 2048
+wks = Ngl.open_wks(wks_type,difefplotfname,wksres)  # Open a workstation.
+
+# Effects Plots
+efplots = []
+effigstrs = []
+scenarios = efds.scenario.values.tolist()
+# scen = scenarios[0]
+# usemon = usemons[0]
+for usemon in usemons:
+    for scen in scenarios:
+        # contres.tiMainString = usemon
+        dssubset = efds.sel(lev = uselev, month = usemon, scenario = scen)
+        if "cont" in sigmodes:
+            dssubset[contvarname] = dssubset[contvarname].where(dssubset[contvarname+"_pval"]<=siglev,np.nan)
+
+        contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),efcontres)
+        
+        if "over" in sigmodes and len(overvars) != 0:
+            # Here we mask out only vectors that are non-significant in BOTH dimensions (U, V)
+            overvars_pvals = [i+"_pval" for i in overvars]
+            overmask = xr.apply_ufunc(np.logical_or, (dssubset[overvars_pvals[0]] <= siglev), (dssubset[overvars_pvals[1]] <= siglev))
+            # dssubset = dssubset.merge(dssubset[overvars].where(rem_suf(dssubset[[i+"_pval" for i in overvars]],"_pval")<=siglev,np.nan), overwrite_vars=overvars)
+            dssubset = dssubset.merge(dssubset[overvars].where(overmask,np.nan), overwrite_vars=overvars)
+
+        if overlaytype == "wind":
+            windplot = Ngl.vector(wks,dssubset["U"].to_masked_array(),dssubset["V"].to_masked_array(),efreswind)
+            Ngl.overlay(contplot,windplot)
+
+        efplots.append(contplot)
+        effigstrs.append(str(scen) + " | " + monstrs[usemon])
+
+Ngl.delete_wks(wks)
+print(efplotfname)

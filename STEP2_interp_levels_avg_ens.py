@@ -12,7 +12,10 @@ import numpy as np
 import pandas as pd
 import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
+from numba import jit
 # %matplotlib inline
+
+from pooled_stats import *
 
 #%%
 # filename = "/media/gabriel/hd2_6tb/ccsm4/test/rcp0.0_veg_005.cam2.h0.1950-01.nc"
@@ -26,6 +29,8 @@ syear = 2040
 eyear = 2050
 years = list(range(syear, eyear + 1))
 
+nyears = len(years)
+
 # Interpolation parameters
 # New pressure levels. We need them in hPa/mb here for Ngl.vinth2p, 
 # but will convert them to Pa later for consistency with reference CMIP5 files
@@ -35,10 +40,22 @@ kxtrp = True    # Should we extrapolate into levels below the topography?
 
 # %% Function definitions
 def drop_unused_vars(ds):
-    smallvarnames = [var for var in ds.data_vars if ds[var].shape.__len__() < 4]
+    # smallvarnames = [var for var in ds.data_vars if ds[var].shape.__len__() < 4]
+    fixedvarnames = [var for var in ds.data_vars if ds[var].shape.__len__() <= 2]
+    smallvarnames = [\
+        "CLDHGH", "CLDLOW", "CLDMED", "CLDTOT", \
+        "FSDS", "FLDS", "SOLIN", "SRFRAD",\
+        "LHFLX", "SHFLX", "QFLX",\
+        "PBLH", "PHIS", "PS","PSL",
+        "TMQ",\
+        "PRECC", "PRECL", "PRECT",\
+        "QREFHT", "RHREFHT", "TREFHT", "TREFMNAV", "TREFMXAV","TS","U10",\
+        ]
+    smallvarnames.extend([i + "_var" for i in smallvarnames])
     bigvarnames = ["Z3","T","Q","U","V","OMEGA","VQ","OMEGAQ"] #There is no UQ for some reason
+    bigvarnames.extend([i + "_var" for i in bigvarnames])
     # bigvarnames = ["Z3","T"]
-    bothvarnames = smallvarnames + bigvarnames
+    bothvarnames = smallvarnames + bigvarnames + fixedvarnames
     dropvarnames = [i for i in ds.data_vars if i not in bothvarnames]
     ds = ds[bothvarnames]
     return(ds)
@@ -67,8 +84,31 @@ for scen in scens:
 
     #%%
     # Combine the DataSets on the "member" dimension and take the ensemble mean 
-    print("Combining and taking ensemble mean...")
-    dsmean = xr.combine_nested(expitems, concat_dim="member", combine_attrs= "override").mean(dim = "member", keep_attrs = True)
+    # print("Combining and taking ensemble mean...")
+    # dsmean = xr.combine_nested(expitems, concat_dim="member", combine_attrs= "override").mean(dim = "member", keep_attrs = True)
+    
+    print("Combining ...")
+    bigds = xr.combine_nested(expitems, concat_dim="member", combine_attrs= "override")
+
+    # Separate Datasets for means and variances
+    regexvar = re.compile(".*_var$")
+    dsmeans = bigds[[i for i in bigds.data_vars if not regexvar.match(i)]]
+    # Rename variance variable names to match those of the means for pooling
+    dsvars = bigds[[i for i in bigds.data_vars if regexvar.match(i)]]
+    dsvars = dsvars.rename({i:(re.sub("(.*)_var$","\g<1>",i)) for i in dsvars.data_vars})
+
+
+    # Aggregate means by taking a simple mean
+    dsmean = dsmeans.mean(dim = "member", keep_attrs = True)
+
+    # Aggregate variances by applying pooled_
+    dsvariance = xr.apply_ufunc(pool_variances_dask, dsmeans, dsvars, nyears, \
+        dask = "parallelized", input_core_dims=[["member"], ["member"], [] ],
+        keep_attrs=True)
+
+    # Join variance variables into dsmean
+    dsvariance = dsvariance.rename({i:(i + "_var") for i in dsvariance.data_vars})
+    dsmean = dsmean.merge(dsvariance)
 
     #%%
     # With the climatological monthly ensemble means, we will now interpolate 
@@ -124,6 +164,10 @@ for scen in scens:
         # Merge this DataSet with the output one, that starts out empty
         dsout = dsout.merge(dsnew)
 
+    # Merge in the 2D variables
+    dsout = dsout.merge(dsmean[list(set([i for i in list(dsmean.data_vars) if dsmean[i].shape.__len__() == 3]) - \
+        set(dsout.data_vars))])
+
     # Copy attributes from the original dataset and add some
     dsout.attrs = dsmean.attrs
     dsout.attrs['STEP2_comment'] = 'Vertical levels interpolated via Ngl.vinth2p using method (intyp) ' + str(intyp) + " and extrapolation " + str(kxtrp) + " on " + datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
@@ -134,8 +178,68 @@ for scen in scens:
     outfname = outfolder + scen + "_ensmean_pres_"+ str(syear) + "_" + str(eyear) + ".nc"
     dsout.to_netcdf(outfname)
 
+    # Cleanup
+    del(dsout)
+    del(dsmean)
+    del(dsvariance)
+    del(dsmeans)
+    del(dsvars)
+    del(bigds)
+    del(expitems)
+    del(items)
 
-#%%
+
+# #%%
+# bigv = np.random.normal(4,1,40)
+# np.var(bigv)
+# n = 10
+# subv = [bigv[i:i+n] for i in range(0,len(bigv),n)]
+# means = [np.mean(i) for i in subv]
+# variances = [np.var(i, ddof = 1) for i in subv]
+
+# @jit(nopython = True)
+# def pool_pair_means(a,b,rn):
+#     out = (rn*a + b)/(rn+1)
+#     return(out)
+
+# @jit(nopython = True)
+# def pool_means(v):
+#     i = 0
+#     s = v[0]
+#     while i < (len(v)-1):
+#         rn = i + 1
+#         s = pool_pair_means(s,v[i+1],rn)
+#         i = i + 1
+#     return(s)
+
+# @jit(nopython = True)
+# def pool_pair_variances(v1,v2,m1,m2,n1,n2):
+#     vp = (1/(n1+n2-1)) * ( (n1-1)*v1 + (n2-1)*v2 + ((n1*n2)/(n1+n2)) * (m1-m2)**2 )
+#     return(vp)
+
+# @jit(nopython = True)
+# def pool_variances(means, variances,n):
+#     i = 0
+#     vp = variances[0]
+#     mp = means[0]
+#     while i < (len(variances)-1):
+#         rn = i + 1
+#         vp = pool_pair_variances(vp, variances[i+1], mp, means[i+1], n*rn, n)
+#         mp = pool_pair_means(mp,means[i+1],rn)
+#         i = i + 1
+#     return(vp)
+
+
+# pool_variances(means,variances,n)
+# np.var(bigv, ddof = 1)
+
+# pool_pair_variances(variances[0],variances[1],means[0],means[1],len(subv[0]),len(subv[1]))
+# np.var(np.concatenate([subv[0],subv[1]]), ddof =1 )
+
+# pool_means(means)
+# np.mean(bigv)
+# subsoma(1,4)
+
 #%% Old code
 # #%% Folders (members) loop
 #     # infolder = infolders[0]
