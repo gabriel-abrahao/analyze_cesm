@@ -680,7 +680,7 @@ for usemon in usemons:
         if "cont" in sigmodes:
             dssubset[contvarname] = dssubset[contvarname].where(dssubset[contvarname+"_pval"]<=siglev,np.nan)
 
-        contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),efcontres)
+        # contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),efcontres)
         
         if "over" in sigmodes and len(overvars) != 0:
             # Here we mask out only vectors that are non-significant in BOTH dimensions (U, V)
