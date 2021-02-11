@@ -196,4 +196,7 @@ def pool_variances_dask(means, variances,n):
 
 # soma(a)
 
-# %%
+#%%
+# sys.path.append("fortran/")
+# import dpres
+# dpres.dpres.dpres1d()
