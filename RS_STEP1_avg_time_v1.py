@@ -14,6 +14,27 @@ import matplotlib.pyplot as plt
 import nc_time_axis
 # %matplotlib inline
 
+# %% Function definitions
+def drop_unused_vars(ds):
+    # smallvarnames = [var for var in ds.data_vars if ds[var].shape.__len__() < 4]
+    fixedvarnames = [var for var in ds.data_vars if ds[var].shape.__len__() <= 2]
+    smallvarnames = [\
+        "CLDHGH", "CLDLOW", "CLDMED", "CLDTOT", \
+        "FSDS", "FLDS", "SOLIN", "SRFRAD",\
+        "LHFLX", "SHFLX", "QFLX",\
+        "PBLH", "PHIS", "PS","PSL",
+        "TMQ",\
+        "PRECC", "PRECL", "PRECT",\
+        "QREFHT", "RHREFHT", "TREFHT", "TREFMNAV", "TREFMXAV","TS","U10",\
+        ]
+    smallvarnames.extend([i + "_var" for i in smallvarnames])
+    bigvarnames = ["Z3","T","Q","U","V","OMEGA","VQ","OMEGAQ"] #There is no UQ for some reason
+    bigvarnames.extend([i + "_var" for i in bigvarnames])
+    # bigvarnames = ["Z3","T"]
+    bothvarnames = smallvarnames + bigvarnames + fixedvarnames
+    dropvarnames = [i for i in ds.data_vars if i not in bothvarnames]
+    ds = ds[bothvarnames]
+    return(ds)
 #%%
 # filename = "/media/gabriel/hd2_6tb/ccsm4/test/rcp0.0_veg_005.cam2.h0.1950-01.nc"
 

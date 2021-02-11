@@ -9,6 +9,7 @@ import re
 import glob
 from datetime import datetime
 import xarray as xr
+import metpy
 import numpy as np
 import pandas as pd
 import cartopy.crs as ccrs
@@ -122,3 +123,10 @@ dsmean.to_netcdf(outfname)
 # toutds = xr.merge([tmeands,tvards])
 
 # toutds.attrs['nobs_var'] = inds.dims['member']*inds.dims['time']
+
+# %% 
+# TEST
+data = dsmean
+
+#%%
+
