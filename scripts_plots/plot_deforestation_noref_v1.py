@@ -47,8 +47,8 @@ domain = "BR" # Zoom in Brazil
 
 plotsfolder = "../output_plots/deforestation/" 
 
-plotfname =     plotsfolder + "deforestation_" + domain
-diffplotfname = plotsfolder + "deforestation_diff_" + domain
+plotfname =     plotsfolder + "deforestation_noref_" + domain
+diffplotfname = plotsfolder + "deforestation_noref_diff_" + domain
 wks_type = "png"
 
 #%%
@@ -169,18 +169,22 @@ deltares.cnLineLabelsOn         = False
 deltares.cnFillMode             = "RasterFill"
 deltares.lbLabelBarOn           = False
 
-deltacolormap = Ngl.read_colormap_file("WhiteYellowOrangeRed")
+# deltacolormap = Ngl.read_colormap_file("WhiteYellowOrangeRed")
+deltacolormap = Ngl.read_colormap_file("OceanLakeLandSnow")
+deltacolormap = deltacolormap[2:-24]
 # deltacolormap = deltacolormap[::-1]
 deltares.cnFillPalette           =   deltacolormap
 
 deltares.cnLevelSelectionMode    =   "ExplicitLevels"
-deltares.cnLevels    =   np.append(np.array([5]),np.arange(10,90.1,10))
+deltares.cnLevels    =   np.append(np.array([5]),np.arange(10,100.1,10))
 
 # Plots
 plots = []
 figstrs = []
 for usescen in usescens:
-    pltarray = deltads[usescen]
+    # pltarray = deltads[usescen]
+    pltarray = defds[usescen].sel(time = pyear)
+    
     contplot = Ngl.contour_map(wks,pltarray.to_masked_array(),deltares)
     plots.append(contplot)
     figstrs.append(usescen)
@@ -198,7 +202,7 @@ panelres.nglPanelBottom                      = 0.05
 # panelres.nglPanelRight                      = 0.2
 
 # panelres.lbTitleString          =   reflabelstring
-panelres.lbTitleString          =   "Change in deforestation from " + str(refyear) + " to " + str(pyear) + " (pp)"
+panelres.lbTitleString          =   "Total deforestation in  " + str(pyear) + " (pp)"
 panelres.lbTitlePosition          =   "Bottom"
 panelres.lbTitleFontHeightF          =   0.01
 panelres.lbJustification          = "TopCenter"
@@ -273,3 +277,4 @@ Ngl.panel(wks,[diffplot],[1,1],diffpanelres)
 # Ngl.frame(wks)
 
 Ngl.delete_wks(wks)
+# %%
