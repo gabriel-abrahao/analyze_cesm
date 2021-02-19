@@ -12,6 +12,7 @@ import pandas as pd
 from scipy.stats import ttest_ind_from_stats
 import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
+import plotnine as p9
 # %matplotlib inline
 
 
@@ -48,6 +49,35 @@ if isrs:
     insuf = "rs_allyears_ens_2.5_2005_2049.nc"
     reffname = "../refdata/historical/rainy_season/ensemble/historical_heg/rs_allyears_ens_2.5_1990_2004.nc"
 
+
+# Plot deforestation X effects?
+idefplots = True
+if idefplots:
+    definfolder = motherfolder + "input/out_surfdata_fix/" 
+    defpyear   = 2050
+    defrefyear = 2005
+    
+    # These should match the ones in the CESM run files. 
+    defscenfnames = {'rcp2.6_seg' : definfolder + "surfdata.pftdyn_0.9x1.25_rcp2.6_simyr1850-2100_rochedo_seg_c100323.nc",\
+                     'rcp2.6_weg' : definfolder + "surfdata.pftdyn_0.9x1.25_rcp2.6_simyr1850-2100_rochedo_weg_c100323.nc",\
+                     'rcp8.5_seg' : definfolder + "surfdata.pftdyn_0.9x1.25_rcp8.5_simyr1850-2100_rochedo_seg_c100319.nc",\
+                     'rcp8.5_weg' : definfolder + "surfdata.pftdyn_0.9x1.25_rcp8.5_simyr1850-2100_rochedo_weg_c100319.nc"}
+
+    defscennames = list(defscenfnames.keys())
+
+
+    pftvarname = "PCT_PFT"
+
+    # Indexes of PFTs considered as deforestation
+    # FIXME: The actual Rochedo to CESM PFT calculation is more complex,
+    # we have natural C4 grasses for example. This setup is only good for deltas
+    defpfts = [14, 15, 16]
+
+
+# Read regions? We have to if we want to make all deforestation plots
+ireadregions = True
+regfname =      "../regions/states_grid.nc"
+regcodesfname = "../regions/states_codes.csv"
 
 # Contour variable
 # contvarname = "Z3"
@@ -498,6 +528,37 @@ for varname in bigdsin.data_vars:
         for attname in bigdsin[varname].attrs:
             deltads[varname].attrs[attname] = bigdsin[varname].attrs[attname]
 
+#%% Read deforestation maps if asked
+if idefplots:
+    defallitems = [{"scenario" : i, "ds" : xr.open_dataset(defscenfnames[i]).\
+        sel(lat = slice(rminlat,rmaxlat), lon = slice(rminlon,rmaxlon))} for i in defscennames]
+    for item in defallitems:
+        item["ds"] = item["ds"].expand_dims("scenario")
+        item["ds"]["scenario"] = pd.Index([item["scenario"]])
+
+    defbigdsin = xr.combine_nested([i["ds"] for i in defallitems], concat_dim="scenario", combine_attrs= "override")
+
+    # Calculate deforestation
+    defarr = defbigdsin.isel(pft = defpfts).sum(dim = "pft")[pftvarname]
+
+    defarr = defarr.sel(time = defpyear) - defarr.sel(time = defrefyear)
+
+    #TODO: This will only be valid in Brazil, since LU is different outside of it in each RCP.
+    deltadefarr = defarr.sel(scenario = "rcp8.5_weg") - defarr.sel(scenario = "rcp8.5_seg")
+
+    # Interpolate to match exactly the CESM grid. CESM itself is apparently far more lenient on coordinate matching than xarray.
+    deltadefarr = deltadefarr.interp_like(bigdsin)
+
+    # Rename
+    deltadefarr = deltadefarr.rename("DiffDef")
+
+#%% Read regions
+if ireadregions:
+    regions = xr.open_dataarray(regfname).interp_like(bigdsin, method = "nearest").rename("region")
+
+regcodes = pd.read_csv(regcodesfname).set_index("code").T.to_dict("list")
+regcodes = {i:regcodes[i][0] for i in regcodes.keys()}
+
 # %%
 # ===================== BEGIN PLOTS
 labelstring = refds[contvarname].attrs["long_name"] + \
@@ -849,43 +910,71 @@ selscens = ["DEF_8.5", "DEF_2.6", "DEF_DIF"]
 defdifds = defdifds.merge(efds).sel(scenario = selscens)
 defdifds
 
-# %%
-# ======================== BEGIN DIFFERENCES IN DEFORESTATION EFFECTS PLOTS
+# %% ======================== BEGIN DIFFERENCES IN DEFORESTATION EFFECTS PLOTS
 #TODO: JUST PASTED FROM PREVIOUS CELLS, THIS DOES NOT WORK YET
 # del wks
-wksres = Ngl.Resources()
-wksres.wkHeight = 2048
-wksres.wkWidth = 2048
-wks = Ngl.open_wks(wks_type,difefplotfname,wksres)  # Open a workstation.
+# wksres = Ngl.Resources()
+# wksres.wkHeight = 2048
+# wksres.wkWidth = 2048
+# wks = Ngl.open_wks(wks_type,difefplotfname,wksres)  # Open a workstation.
 
-# Effects Plots
-efplots = []
-effigstrs = []
-scenarios = efds.scenario.values.tolist()
-# scen = scenarios[0]
-# usemon = usemons[0]
-for usemon in usemons:
-    for scen in scenarios:
-        # contres.tiMainString = usemon
-        dssubset = efds.sel(lev = uselev, month = usemon, scenario = scen)
-        if "cont" in sigmodes:
-            dssubset[contvarname] = dssubset[contvarname].where(dssubset[contvarname+"_pval"]<=siglev,np.nan)
+# # Effects Plots
+# efplots = []
+# effigstrs = []
+# scenarios = efds.scenario.values.tolist()
+# # scen = scenarios[0]
+# # usemon = usemons[0]
+# for usemon in usemons:
+#     for scen in scenarios:
+#         # contres.tiMainString = usemon
+#         dssubset = efds.sel(lev = uselev, month = usemon, scenario = scen)
+#         if "cont" in sigmodes:
+#             dssubset[contvarname] = dssubset[contvarname].where(dssubset[contvarname+"_pval"]<=siglev,np.nan)
 
-        contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),efcontres)
+#         contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),efcontres)
         
-        if "over" in sigmodes and len(overvars) != 0:
-            # Here we mask out only vectors that are non-significant in BOTH dimensions (U, V)
-            overvars_pvals = [i+"_pval" for i in overvars]
-            overmask = xr.apply_ufunc(np.logical_or, (dssubset[overvars_pvals[0]] <= siglev), (dssubset[overvars_pvals[1]] <= siglev))
-            # dssubset = dssubset.merge(dssubset[overvars].where(rem_suf(dssubset[[i+"_pval" for i in overvars]],"_pval")<=siglev,np.nan), overwrite_vars=overvars)
-            dssubset = dssubset.merge(dssubset[overvars].where(overmask,np.nan), overwrite_vars=overvars)
+#         if "over" in sigmodes and len(overvars) != 0:
+#             # Here we mask out only vectors that are non-significant in BOTH dimensions (U, V)
+#             overvars_pvals = [i+"_pval" for i in overvars]
+#             overmask = xr.apply_ufunc(np.logical_or, (dssubset[overvars_pvals[0]] <= siglev), (dssubset[overvars_pvals[1]] <= siglev))
+#             # dssubset = dssubset.merge(dssubset[overvars].where(rem_suf(dssubset[[i+"_pval" for i in overvars]],"_pval")<=siglev,np.nan), overwrite_vars=overvars)
+#             dssubset = dssubset.merge(dssubset[overvars].where(overmask,np.nan), overwrite_vars=overvars)
 
-        if overlaytype == "wind":
-            windplot = Ngl.vector(wks,dssubset["U"].to_masked_array(),dssubset["V"].to_masked_array(),efreswind)
-            Ngl.overlay(contplot,windplot)
+#         if overlaytype == "wind":
+#             windplot = Ngl.vector(wks,dssubset["U"].to_masked_array(),dssubset["V"].to_masked_array(),efreswind)
+#             Ngl.overlay(contplot,windplot)
 
-        efplots.append(contplot)
-        effigstrs.append(str(scen) + " | " + monstrs[usemon])
+#         efplots.append(contplot)
+#         effigstrs.append(str(scen) + " | " + monstrs[usemon])
 
-Ngl.delete_wks(wks)
-print(efplotfname)
+# Ngl.delete_wks(wks)
+# print(efplotfname)
+
+#%%
+efdsused = efds[contvarname].sel(month = usemon, lev = uselev)
+efdsused = xr.merge([efdsused.sel(scenario = scen).drop_vars(["scenario"]).rename(scen) for scen in efdsused["scenario"].values])
+
+efdsused = efdsused.merge(deltadefarr)
+efdsused = efdsused.merge(regions)
+
+# Convert to dataframe and translate region codes
+efdf = efdsused.to_dataframe()
+efdf = efdf.replace({"region":regcodes})
+
+#%%
+
+efdf = efdf.dropna(subset = ["region"])
+
+(
+    p9.ggplot(efdf) + 
+    p9.ggtitle(contvarname) + 
+    p9.aes(x="DEF_2.6", y="DEF_8.5", color="region") +
+    p9.geom_point() +
+    p9.coords.coord_fixed() +
+    p9.geom_smooth(method = "lm")
+)
+
+# %
+# %
+
+# %%
