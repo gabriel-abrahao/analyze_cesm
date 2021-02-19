@@ -78,11 +78,12 @@ if idefplots:
 ireadregions = True
 regfname =      "../regions/states_grid.nc"
 regcodesfname = "../regions/states_codes.csv"
+useregs = ["AM","PA","MT","MA","TO","PI"]
 
 # Contour variable
 # contvarname = "Z3"
-contvarname = "PRECT"
-# contvarname = "TREFHT"
+# contvarname = "PRECT"
+contvarname = "TREFHT"
 # contvarname = "outslen"
 # contvarname = "outoday"
 # contvarname = "outeday"
@@ -135,9 +136,11 @@ uselev = 85000
 if isrs:
     uselev = 1
 
-plotfname   = "../output_plots/" + timetype + "/deltahist_" + overlaytype + "_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) +  "_" + str(int(uselev/100))
-efplotfname = "../output_plots/" + timetype + "/effects_" + overlaytype + "_" + domain + "_" + contvarname   + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) +  "_" + str(int(uselev/100))
-difefplotfname = "../output_plots/" + timetype + "/difeffects_" + overlaytype + "_" + domain + "_" + contvarname   + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) +  "_" + str(int(uselev/100))
+plotfname       = "../output_plots/" + timetype + "/" + contvarname + "/deltahist_" + overlaytype + "_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) +  "_" + str(int(uselev/100))
+efplotfname     = "../output_plots/" + timetype + "/" + contvarname + "/effects_" + overlaytype + "_" + domain + "_" + contvarname   + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) +  "_" + str(int(uselev/100))
+difefplotfname  = "../output_plots/" + timetype + "/" + contvarname + "/difeffects_" + overlaytype + "_" + domain + "_" + contvarname   + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) +  "_" + str(int(uselev/100))
+
+xyplotsfsuf  = "../output_plots/" + timetype + "/" + contvarname + "/xy_" + contvarname + "_"
 
 wks_type = "png"
 
@@ -902,68 +905,159 @@ Ngl.delete_wks(wks)
 print(efplotfname)
 # %%
 # DIFFERENCES IN DEFORESTATION EFFECTS
-defdifds = calc_diff_ttest(efds.sel(scenario = "DEF_8.5"), efds.sel(scenario = "DEF_2.6"), contvarname, overvars, sigmodes, uselev, nobs)
-defdifds = defdifds.expand_dims("scenario")
-defdifds["scenario"] = pd.Index(["DEF_DIF"])
+difefds = calc_diff_ttest(efds.sel(scenario = "DEF_8.5"), efds.sel(scenario = "DEF_2.6"), contvarname, overvars, sigmodes, uselev, nobs)
+difefds = difefds.expand_dims("scenario")
+difefds["scenario"] = pd.Index(["DEF_DIF"])
 
 selscens = ["DEF_8.5", "DEF_2.6", "DEF_DIF"]
-defdifds = defdifds.merge(efds).sel(scenario = selscens)
-defdifds
+difefds = difefds.merge(efds).sel(scenario = selscens)
+difefds
 
 # %% ======================== BEGIN DIFFERENCES IN DEFORESTATION EFFECTS PLOTS
 #TODO: JUST PASTED FROM PREVIOUS CELLS, THIS DOES NOT WORK YET
 # del wks
-# wksres = Ngl.Resources()
-# wksres.wkHeight = 2048
-# wksres.wkWidth = 2048
-# wks = Ngl.open_wks(wks_type,difefplotfname,wksres)  # Open a workstation.
+wksres = Ngl.Resources()
+wksres.wkHeight = 2048
+wksres.wkWidth = 2048
+wks = Ngl.open_wks(wks_type,difefplotfname,wksres)  # Open a workstation.
 
-# # Effects Plots
-# efplots = []
-# effigstrs = []
-# scenarios = efds.scenario.values.tolist()
-# # scen = scenarios[0]
-# # usemon = usemons[0]
-# for usemon in usemons:
-#     for scen in scenarios:
-#         # contres.tiMainString = usemon
-#         dssubset = efds.sel(lev = uselev, month = usemon, scenario = scen)
-#         if "cont" in sigmodes:
-#             dssubset[contvarname] = dssubset[contvarname].where(dssubset[contvarname+"_pval"]<=siglev,np.nan)
+# ==
+# Specific deforestation resources
+deforres = set_common_resources()
 
-#         contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),efcontres)
-        
-#         if "over" in sigmodes and len(overvars) != 0:
-#             # Here we mask out only vectors that are non-significant in BOTH dimensions (U, V)
-#             overvars_pvals = [i+"_pval" for i in overvars]
-#             overmask = xr.apply_ufunc(np.logical_or, (dssubset[overvars_pvals[0]] <= siglev), (dssubset[overvars_pvals[1]] <= siglev))
-#             # dssubset = dssubset.merge(dssubset[overvars].where(rem_suf(dssubset[[i+"_pval" for i in overvars]],"_pval")<=siglev,np.nan), overwrite_vars=overvars)
-#             dssubset = dssubset.merge(dssubset[overvars].where(overmask,np.nan), overwrite_vars=overvars)
+deforres.cnFillOn               = True
+deforres.cnLinesOn              = False
+deforres.cnLineLabelsOn         = False
+deforres.cnFillMode             = "RasterFill"
 
-#         if overlaytype == "wind":
-#             windplot = Ngl.vector(wks,dssubset["U"].to_masked_array(),dssubset["V"].to_masked_array(),efreswind)
-#             Ngl.overlay(contplot,windplot)
+deforlabelstring = "Difference in 2050 deforestation~C~             (WEG-SEG, pp)"
 
-#         efplots.append(contplot)
-#         effigstrs.append(str(scen) + " | " + monstrs[usemon])
+deforres.lbLabelBarOn           = False
+# deforres.lbLabelBarOn           = True
+deforres.lbOrientation          = "horizontal"
+deforres.lbTitleString          = deforlabelstring
 
+# deforcolormap = Ngl.read_colormap_file("WhiteYellowOrangeRed")
+# deforcolormap = deforcolormap[::-1]
+deforcolormap = Ngl.read_colormap_file("OceanLakeLandSnow")
+deforcolormap = deforcolormap[65:-24]
+deforcolormap[0] = [1,1,1,1]
+deforres.cnFillPalette           =   deforcolormap
+
+# deforres.cnLevelSelectionMode    =   "AutomaticLevels"
+deforres.cnLevelSelectionMode    =   "ExplicitLevels"
+deforres.cnLevels    =   np.append(np.array([5]),np.arange(10,70.1,10))
+
+#FIXME TESTING, ERASE AND MERGE WITH NEXT CELL!!
+# deforres.nglDraw = True
+# deforres.nglFrame = True
+deforplot = Ngl.contour_map(wks,deltadefarr.to_masked_array(),deforres)
 # Ngl.delete_wks(wks)
-# print(efplotfname)
+
+
+# ==
+# Deep copying resources for difef
+difefcontres = copy.deepcopy(scontres)
+difefreswind = copy.deepcopy(sreswind)
+difefpanelres = copy.deepcopy(spanelres)
+
+difeflabelstring = labelstring + "~C~ Wind at " + str(int(uselev/100)) + "hPa (m/s)"
+
+# Effects Plots
+difefplots = []
+difeffigstrs = []
+scenarios = difefds.scenario.values.tolist()
+# scen = scenarios[0]
+# usemon = usemons[0]
+for usemon in usemons:
+    for scen in scenarios:
+        # contres.tiMainString = usemon
+        dssubset = difefds.sel(lev = uselev, month = usemon, scenario = scen)
+        if "cont" in sigmodes:
+            dssubset[contvarname] = dssubset[contvarname].where(dssubset[contvarname+"_pval"]<=siglev,np.nan)
+
+        contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),difefcontres)
+        
+        if "over" in sigmodes and len(overvars) != 0:
+            # Here we mask out only vectors that are non-significant in BOTH dimensions (U, V)
+            overvars_pvals = [i+"_pval" for i in overvars]
+            overmask = xr.apply_ufunc(np.logical_or, (dssubset[overvars_pvals[0]] <= siglev), (dssubset[overvars_pvals[1]] <= siglev))
+            # dssubset = dssubset.merge(dssubset[overvars].where(rem_suf(dssubset[[i+"_pval" for i in overvars]],"_pval")<=siglev,np.nan), overwrite_vars=overvars)
+            dssubset = dssubset.merge(dssubset[overvars].where(overmask,np.nan), overwrite_vars=overvars)
+
+        if overlaytype == "wind":
+            windplot = Ngl.vector(wks,dssubset["U"].to_masked_array(),dssubset["V"].to_masked_array(),difefreswind)
+            Ngl.overlay(contplot,windplot)
+
+        difefplots.append(contplot)
+        difeffigstrs.append(str(scen) + " | " + monstrs[usemon])
+
+difefpanelres.nglPanelFigureStrings = difeffigstrs
+difefpanelres.lbTitleString = difeflabelstring
+
+if addsiglabel:
+    difefpanelres.lbTitleString = difefpanelres.lbTitleString + "~C~Showing differences significant at " + str(siglev*100) + "%"
+
+difefpanelres.nglFrame = False
+difefpanelres.nglPanelXWhiteSpacePercent = 0
+difefpanelres.nglPanelBottom = 0.09
+difefpanelres.nglPanelTop = 1.0
+difefpanelres.nglPanelLeft = 0.25
+difefpanelres.nglPanelRight = 1.0
+
+
+# difefpanelres = Ngl.Resources()
+Ngl.panel(wks,difefplots,[len(usemons),len(scenarios)],difefpanelres) #Freezing here
+
+deforpanelres = copy.deepcopy(spanelres)
+deforpanelres.nglPanelLabelBar = True
+deforpanelres.lbTitleString = deforlabelstring
+del(deforpanelres.nglPanelFigureStrings)
+
+deforpanelres.nglFrame = True
+deforpanelres.nglPanelXWhiteSpacePercent = 0
+deforpanelres.nglPanelBottom = 0.09
+deforpanelres.nglPanelTop = 1.0
+deforpanelres.nglPanelLeft = 1.0 - difefpanelres.nglPanelRight
+deforpanelres.nglPanelRight = 0.25
+
+deforpanelres.nglPanelRowSpec = True
+
+
+# deforpanelres.nglPanelSave = True
+# difefpanelres.nglPanelSave = True
+
+deforplots = [deforplot]
+# Ngl.panel(wks,deforplots,[len(usemons)+1,1],deforpanelres) #Freezing here
+Ngl.panel(wks,deforplots,[0,0,0,1],deforpanelres) #Freezing here
+
+
+Ngl.delete_wks(wks)
+print(difefplotfname)
 
 #%%
-efdsused = efds[contvarname].sel(month = usemon, lev = uselev)
+# efdsused = efds[contvarname].sel(month = usemon, lev = uselev)
+efdsused = efds[contvarname].sel(month = usemons, lev = uselev)
 efdsused = xr.merge([efdsused.sel(scenario = scen).drop_vars(["scenario"]).rename(scen) for scen in efdsused["scenario"].values])
 
 efdsused = efdsused.merge(deltadefarr)
 efdsused = efdsused.merge(regions)
 
+# efdsused = 
+# efdsused.merge(efds[contvarname].sel(month = usemons, lev = uselev, scenario = "DEF_DIF"))
+
+
 # Convert to dataframe and translate region codes
 efdf = efdsused.to_dataframe()
 efdf = efdf.replace({"region":regcodes})
 
+# Get all indexes (lat, lon, month...) as actual column variables
+efdf = efdf.reset_index()
+
 #%%
 
 efdf = efdf.dropna(subset = ["region"])
+efdf = efdf[efdf["region"].isin(useregs)]
 
 (
     p9.ggplot(efdf) + 
@@ -971,10 +1065,24 @@ efdf = efdf.dropna(subset = ["region"])
     p9.aes(x="DEF_2.6", y="DEF_8.5", color="region") +
     p9.geom_point() +
     p9.coords.coord_fixed() +
-    p9.geom_smooth(method = "lm")
-)
-
-# %
-# %
+    p9.facet_wrap("~ month") +
+    p9.xlab("DEF_2.6" + " (" + bigdsin[contvarname].units + ")") +
+    p9.ylab("DEF_8.5" + " (" + bigdsin[contvarname].units + ")") +
+    p9.geom_smooth(method = "lm") 
+).save(filename = xyplotsfsuf + "compare.png")
 
 # %%
+# plotvar = "DEF_8.5"
+for plotvar in ["DEF_8.5", "DEF_2.6"]:
+    (
+        p9.ggplot(efdf) + 
+        p9.aes(x="DiffDef", y=plotvar, color="region") +
+        p9.geom_point() +
+        p9.facet_wrap("~ month", scales = 'free') +
+        # p9.facet_grid("~month", scales = 'free') +
+        # p9.coords.coord_fixed() +
+        p9.xlab("Difference in 2050 deforestation (pp)") +
+        p9.ylab(contvarname + " (" + bigdsin[contvarname].units + ")") +
+        p9.geom_smooth(method = "lm") +
+        p9.ggtitle(plotvar)
+    ).save(filename = xyplotsfsuf + "_" + plotvar + "_defXeffect.png")
