@@ -2,3 +2,9 @@ input/**
 output/**
 output_plots/**
 output_rainy_season/**
+regions/**
+refdata/**
+output_small/**
+__pycache__
+.vscode
+
