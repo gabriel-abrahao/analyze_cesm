@@ -1,5 +1,6 @@
 input/**
 output/**
+output_ag/**
 output_plots/**
 output_rainy_season/**
 regions/**
