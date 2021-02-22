@@ -18,8 +18,8 @@ import plotnine as p9
 
 #%%
 # Allows for folder and variable setup specific for rainy season analysis
-isrs = True
-# isrs = False
+# isrs = True
+isrs = False
 
 # REMEMBER PATHS ARE RELATIVE TO THE SCRIPT FOLDER!
 motherfolder = "../"
@@ -81,10 +81,11 @@ regcodesfname = "../regions/states_codes.csv"
 useregs = ["AM","PA","MT","MA","TO","PI"]
 
 # Contour variable
-# contvarname = "Z3"
+contvarname = "Z3"
 # contvarname = "PRECT"
 # contvarname = "TREFHT"
-contvarname = "outslen"
+# contvarname = "OMEGA"
+# contvarname = "outslen"
 # contvarname = "outoday"
 # contvarname = "outeday"
 
@@ -106,9 +107,9 @@ if len(sigmodes) == 0:
     addsiglabel = False
 
 # Domain string, limits are defined for each one further below
-# domain = "BIG1"
+domain = "BIG1"
 # domain = "SAMATL" # South america and Atlantic Ocean
-domain = "BR" # Zoom in Brazil
+# domain = "BR" # Zoom in Brazil
 
 # Time type
 timetype = "monthly"
@@ -132,6 +133,7 @@ else:
 
 # Level (Pa) for all plots, or just for wind if it's a surface variable
 uselev = 85000
+# uselev = 50000
 # uselev = 20000
 if isrs:
     uselev = 1
@@ -208,6 +210,24 @@ elif contvarname == "TREFHT":
     reversecolormap = False 
     reversedeltacolormap = False
     icolormapoverride   = False
+# # OMEGA 850hPa
+elif contvarname == "OMEGA" and uselev == 85000:
+    contlevels  = np.arange(-0.2,0.2001,0.05)
+    deltalevels = np.arange(-0.2,0.2001,0.025)
+    eflevels = np.arange(-0.06,0.06001,0.005)
+    reversecolormap = False 
+    reversedeltacolormap = False
+    icolormapoverride   = True
+    colormapoverride    = "BlueWhiteOrangeRed"
+# # OMEGA 500hPa
+elif contvarname == "OMEGA" and uselev == 50000:
+    contlevels  = np.arange(-0.2,0.2001,0.05)
+    deltalevels = np.arange(-0.2,0.2001,0.025)
+    eflevels = np.arange(-0.03,0.03001,0.0025)
+    reversecolormap = False 
+    reversedeltacolormap = False
+    icolormapoverride   = True
+    colormapoverride    = "BlueWhiteOrangeRed"
 # # outslen
 elif contvarname == "outslen":
     contlevels  = np.arange(100,250,10)
@@ -564,8 +584,7 @@ if ireadregions:
 regcodes = pd.read_csv(regcodesfname).set_index("code").T.to_dict("list")
 regcodes = {i:regcodes[i][0] for i in regcodes.keys()}
 
-# %%
-# ===================== BEGIN PLOTS
+# %% ===================== BEGIN PLOTS
 labelstring = refds[contvarname].attrs["long_name"] + \
     " (" + refds[contvarname].attrs["units"] + ")"
 
@@ -967,9 +986,9 @@ deforplot = Ngl.contour_map(wks,deltadefarr.to_masked_array(),deforres)
 
 # ==
 # Deep copying resources for difef
-difefcontres = copy.deepcopy(scontres)
-difefreswind = copy.deepcopy(sreswind)
-difefpanelres = copy.deepcopy(spanelres)
+difefcontres =  copy.deepcopy(efcontres)
+difefreswind =  copy.deepcopy(efreswind)
+difefpanelres = copy.deepcopy(efpanelres)
 
 del(difefreswind.vcRefAnnoOrthogonalPosF)
 del(difefreswind.vcRefAnnoFontHeightF)
@@ -1065,6 +1084,10 @@ deltadsused = deltadsused.merge(regions)
 # Convert to dataframe and translate region codes
 deltadf = deltadsused.to_dataframe()
 deltadf = deltadf.replace({"region":regcodes})
+
+# Keep just the used regions
+deltadf = deltadf.dropna(subset = ["region"])
+deltadf = deltadf[deltadf["region"].isin(useregs)]
 
 # Get all indexes (lat, lon, month...) as actual column variables
 deltadf = deltadf.reset_index()
