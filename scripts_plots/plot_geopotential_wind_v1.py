@@ -18,8 +18,8 @@ import plotnine as p9
 
 #%%
 # Allows for folder and variable setup specific for rainy season analysis
-# isrs = True
-isrs = False
+isrs = True
+# isrs = False
 
 # REMEMBER PATHS ARE RELATIVE TO THE SCRIPT FOLDER!
 motherfolder = "../"
@@ -83,14 +83,14 @@ useregs = ["AM","PA","MT","MA","TO","PI"]
 # Contour variable
 # contvarname = "Z3"
 # contvarname = "PRECT"
-contvarname = "TREFHT"
-# contvarname = "outslen"
+# contvarname = "TREFHT"
+contvarname = "outslen"
 # contvarname = "outoday"
 # contvarname = "outeday"
 
 # String wih the type of overlay, or "none" for no overlay
-# overlaytype = "none"
-overlaytype = "wind"
+overlaytype = "none"
+# overlaytype = "wind"
 
 # List of strings with where we should set non-significant points to NaN
 # "over" means the overlay
@@ -142,6 +142,8 @@ difefplotfname  = "../output_plots/" + timetype + "/" + contvarname + "/difeffec
 
 xyplotsfsuf  = "../output_plots/" + timetype + "/" + contvarname + "/xy_" + contvarname + "_"
 
+summariesfpref  = "../output_plots/" + timetype + "/" + contvarname + "/summary_" + contvarname + "_"
+
 wks_type = "png"
 
 # ================= Variable and level dependent plotting parameters
@@ -149,9 +151,9 @@ wks_type = "png"
 # for specific variables which will override values in this section
 
 # Reference magnitude for wind vectors. Units should be m/s.
-windrefmag = 10.0
-deltarefmag = 10.0
-efrefmag = 10.0
+windrefmag = 1.0
+deltarefmag = 1.0
+efrefmag = 0.2
 
 # Default colormaps are red is higher. Reverse for things like pressure/height and precipitation
 reversecolormap = False 
@@ -615,14 +617,18 @@ def add_wind_common_resources(reswind):
     reswind.vcLineArrowThicknessF   = 3.0
     reswind.vcLineArrowHeadMaxSizeF = 0.04 # Default: 0.05 (LineArrow), 0.012 (CurlyVector) 
     # reswind.vcRefMagnitudeF         = windrefmag             # define vector ref mag
-    reswind.vcRefLengthF            = 0.04             # define length of vec ref
+    # reswind.vcRefLengthF            = 0.04             # define length of vec ref
+    reswind.vcRefLengthF            = 0.02             # define length of vec ref. 0.04 works for CurlyVector
+
     reswind.vcMinFracLengthF        = 0.8
     reswind.vcMinDistanceF          = 0.035
     reswind.vcRefAnnoOrthogonalPosF = -0.20
     reswind.vcRefAnnoFontHeightF    = 0.005
-    reswind.vcRefAnnoOn    = False
+    # reswind.vcRefAnnoOn    = False
+    reswind.vcRefAnnoOn    = True
 
-    reswind.vcGlyphStyle = "CurlyVector"
+    # reswind.vcGlyphStyle = "CurlyVector"
+    reswind.vcGlyphStyle = "LineArrow"
 
     return(reswind)
 
@@ -651,6 +657,10 @@ contres.cnLevels    =   contlevels
 # Resources for reference wind plots
 reswind = set_common_resources()
 reswind = add_wind_common_resources(reswind)
+
+reswind.vcRefAnnoOrthogonalPosF = -1.0
+reswind.vcRefAnnoFontHeightF    = 0.03
+reswind.vcRefAnnoString2On = False
 
 reswind.vcRefMagnitudeF         = windrefmag             # define vector ref mag
 
@@ -961,6 +971,15 @@ difefcontres = copy.deepcopy(scontres)
 difefreswind = copy.deepcopy(sreswind)
 difefpanelres = copy.deepcopy(spanelres)
 
+del(difefreswind.vcRefAnnoOrthogonalPosF)
+del(difefreswind.vcRefAnnoFontHeightF)
+del(difefreswind.vcRefAnnoOn)
+difefreswind.vcRefAnnoOrthogonalPosF = -1.0
+difefreswind.vcRefAnnoFontHeightF    = 0.03
+difefreswind.vcMagnitudeFormat = "*+^sg" 
+difefreswind.vcRefAnnoOn    = True
+difefreswind.vcRefAnnoString2On = False
+
 difeflabelstring = labelstring + "~C~ Wind at " + str(int(uselev/100)) + "hPa (m/s)"
 
 # Effects Plots
@@ -1035,7 +1054,30 @@ Ngl.panel(wks,deforplots,[0,0,0,1],deforpanelres) #Freezing here
 Ngl.delete_wks(wks)
 print(difefplotfname)
 
-#%%
+
+#%% DataFrame with deltas
+deltadsused = deltads[contvarname].sel(month = usemons, lev = uselev)
+deltadsused = xr.merge([deltadsused.sel(scenario = scen).drop_vars(["scenario"]).rename(scen) for scen in deltadsused["scenario"].values])
+
+# Add regions
+deltadsused = deltadsused.merge(regions)
+
+# Convert to dataframe and translate region codes
+deltadf = deltadsused.to_dataframe()
+deltadf = deltadf.replace({"region":regcodes})
+
+# Get all indexes (lat, lon, month...) as actual column variables
+deltadf = deltadf.reset_index()
+
+# Summary
+sdeltadf = deltadf.groupby(["region","month"]).mean()
+for col in ["lat","lon","lev","height"]:
+    if col in sdeltadf.columns:
+        sdeltadf = sdeltadf.drop(col, axis = 1)
+
+sdeltadf.to_csv(summariesfpref + "_deltahist.csv")
+
+#%% DataFrame with effects
 # efdsused = efds[contvarname].sel(month = usemon, lev = uselev)
 efdsused = efds[contvarname].sel(month = usemons, lev = uselev)
 efdsused = xr.merge([efdsused.sel(scenario = scen).drop_vars(["scenario"]).rename(scen) for scen in efdsused["scenario"].values])
@@ -1053,6 +1095,14 @@ efdf = efdf.replace({"region":regcodes})
 
 # Get all indexes (lat, lon, month...) as actual column variables
 efdf = efdf.reset_index()
+
+# Summary
+sefdf = efdf.groupby(["region","month"]).mean()
+for col in ["lat","lon","lev","height"]:
+    if col in sefdf.columns:
+        sefdf = sefdf.drop(col, axis = 1)
+
+sefdf.to_csv(summariesfpref + "_effects.csv")
 
 #%%
 
