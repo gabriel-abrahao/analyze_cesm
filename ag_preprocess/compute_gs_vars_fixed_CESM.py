@@ -25,10 +25,6 @@ baseoutfolder = "../output_ag/dd_calc/"
 # models      =   ["BCC-CSM2-MR","CanESM5","EC-Earth3-Veg","GFDL-CM4","MRI-ESM2-0"]
 # scens       =   ["historical", "ssp245", "ssp585"]
 scens       =   next(os.walk(baseinfolder))[1]
-syears      =   [2006 for i in scens]
-eyears		=	[2050 for i in scens]
-# syears      =	[2000, 2016, 2016]
-# eyears		=	[2014, 2051, 2051]
 
 crops = ["single","maize"]
 
