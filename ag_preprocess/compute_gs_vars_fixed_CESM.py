@@ -53,7 +53,12 @@ Tlo = 10.0
 Thi = 32.0
 Tint = 1.0
 
-
+# Dirty override of the scenario counter, can be used to restart runs
+ioverscen = False
+# ioverscen = True
+overscenindex = 2
+if ioverscen:
+    print("====================================================\n===== WARNING: Skipping to scenario index " + str(overscenindex) + " ========\n====================================================")
 
 
 # %% [markdown]
@@ -70,12 +75,21 @@ def concat_clim(infolder,climpref,hyear):
     climarr = xr.concat([climparr,climharr], dim = "time")
     return climarr
 
+# Shifts times of day to 0 hour of that day inplace, from a DataArray/Dataset
+def shift_hour_midnight(inar):
+    inar["time"] = inar["time"] = [i.replace(hour=0, minute=0,second=0) for i in inar.time.values.tolist()]
+    return(None)
+
 # Opens two years (planting and harvest) given a folder, a prefix and a harvest year
 def read_cfnoleap_year(infolder,climpref,hyear):
 
-    timerange = xr.cftime_range(cftime.DatetimeNoLeap(hyear-1, 1, 1, 0, 0, 0, 0),cftime.DatetimeNoLeap(hyear, 12, 31, 0, 0, 0, 0))
+    # timerange = xr.cftime_range(cftime.DatetimeNoLeap(hyear-1, 1, 1, 0, 0, 0, 0),cftime.DatetimeNoLeap(hyear, 12, 31, 0, 0, 0, 0))
+    timerange = xr.cftime_range(cftime.DatetimeNoLeap(hyear-1, 1, 1),cftime.DatetimeNoLeap(hyear, 12, 31))
 
-    climarr = xr.open_dataarray(infolder + "/" + climpref + "allyears.nc").sel(time = timerange)
+    climarr = xr.open_dataarray(infolder + "/" + climpref + "allyears.nc")
+    # Shift hour of day to zero, this is what timerange expects
+    shift_hour_midnight(climarr)
+    climarr = climarr.sel(time = timerange)
     return climarr
 
 
@@ -215,21 +229,31 @@ def calc_all(planmat,harvmat,tempmat,tmaxmat,tminmat,precmat,
             tempgddsmat[:,lati,lonj] = calc_gdd_point(tmaxvec,tminvec,Tlos)
 
 # %% [markdown]
+# ================================================================================================================
 # ### Begin main script
 
 # %%
-# iscen = 0
+# iscen = 2
 for iscen in range(len(scens)):
+    # Scenario index override
+    if ioverscen:
+        if iscen < iscen:
+            continue
+
     scen = scens[iscen]
-    syear = syears[iscen]
-    eyear = eyears[iscen]
     print(scen)
 
     infolder = baseinfolder + scen + "/"
     outfolder = baseoutfolder + "/" + calname + "/" + scen + "/"
 
+    # Get the time variable of a file to infer years
+    dumtime = xr.open_dataarray(infolder + "/" + temppref + "allyears.nc").time
+    syear = dumtime.min().item().year
+    eyear = dumtime.max().item().year
+
     # The basis of calculation will be harvest years
-    hyears = list(range(syear,eyear+1))
+    hyears = list(range(syear+1,eyear+1)) # Remember that range() doesn`t include the last element
+    # hyears = list(range(syear,eyear+1))
 
 
     # Create output folder
