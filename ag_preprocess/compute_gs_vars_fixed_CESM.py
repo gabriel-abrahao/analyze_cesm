@@ -50,6 +50,13 @@ Tlo = 10.0
 Thi = 32.0
 Tint = 1.0
 
+# Domain, crop to Brazil
+minlat = -35
+maxlat = 7
+minlon = 285
+maxlon = 328
+
+
 # Dirty override of the scenario counter, can be used to restart runs
 ioverscen = False
 # ioverscen = True
@@ -78,7 +85,7 @@ def shift_hour_midnight(inar):
     return(None)
 
 # Opens two years (planting and harvest) given a folder, a prefix and a harvest year
-def read_cfnoleap_year(infolder,climpref,hyear):
+def read_cfnoleap_year(infolder,climpref,refarr,hyear):
 
     # timerange = xr.cftime_range(cftime.DatetimeNoLeap(hyear-1, 1, 1, 0, 0, 0, 0),cftime.DatetimeNoLeap(hyear, 12, 31, 0, 0, 0, 0))
     timerange = xr.cftime_range(cftime.DatetimeNoLeap(hyear-1, 1, 1),cftime.DatetimeNoLeap(hyear, 12, 31))
@@ -87,6 +94,11 @@ def read_cfnoleap_year(infolder,climpref,hyear):
     # Shift hour of day to zero, this is what timerange expects
     shift_hour_midnight(climarr)
     climarr = climarr.sel(time = timerange)
+
+    # Interpolate to make sure the grid matches a climarr. 
+    # This is meant to correct small rounding/converting errors in grids
+    # not to serve as an actual interpolation procedure
+    climarr = climarr.interp_like(refarr, method="nearest")
     return climarr
 
 
@@ -257,13 +269,13 @@ for iscen in range(len(scens)):
     # Create output folder
     if not os.path.exists(outfolder): os.makedirs(outfolder, exist_ok=True)
 
-    #FIXME: Loop crops here
+    # Loop crops here
     # crop = crops[0]
     for crop in crops:
         print(crop)
 
         # Open calendar and convert it to two-year based indexes. FIXME: Ignoring leap years here
-        caldata = xr.open_dataset(calfolder+crop+calsuf)
+        caldata = xr.open_dataset(calfolder+crop+calsuf).sel(lat=slice(minlat,maxlat), lon=slice(minlon,maxlon))
         # planarr = caldata[planvar]
         # harvarr = caldata[harvvar]
         # harvarr = xr.where(harvarr < planarr,harvarr + 365,harvarr) - 1
@@ -286,20 +298,20 @@ for iscen in range(len(scens)):
             # harvarr = xr.where(harvarr < planarr,harvarr + 365,harvarr) - 1 
 
             # Open the climate arrays, concatenating them
-            temparr = read_cfnoleap_year(infolder,temppref,hyear)
-            tmaxarr = read_cfnoleap_year(infolder,tmaxpref,hyear)
-            tminarr = read_cfnoleap_year(infolder,tminpref,hyear)
-            precarr = read_cfnoleap_year(infolder,precpref,hyear)
-            vpdarr  = read_cfnoleap_year(infolder,vpdpref,hyear)
+            temparr = read_cfnoleap_year(infolder,temppref,planarr,hyear)
+            tmaxarr = read_cfnoleap_year(infolder,tmaxpref,planarr,hyear)
+            tminarr = read_cfnoleap_year(infolder,tminpref,planarr,hyear)
+            precarr = read_cfnoleap_year(infolder,precpref,planarr,hyear)
+            vpdarr  = read_cfnoleap_year(infolder,vpdpref,planarr,hyear)
 
             # Make sure the calendar arrays match the coordinates
             # FIXME: This could be done only once, but then we would have to read 
             # a climate array beforehand
             # TODO: If we keep having issues with alignment, 
             # maybe it's best to do the opposite and match climarrays to the common calendar
-            if not (planarr["lat"].equals(temparr["lat"]) and planarr["lon"].equals(temparr["lon"]) ):
-                planarr = planarr.interp_like(temparr, method="nearest")
-                harvarr = harvarr.interp_like(temparr, method="nearest")
+            # if not (planarr["lat"].equals(temparr["lat"]) and planarr["lon"].equals(temparr["lon"]) ):
+            #     planarr = planarr.interp_like(temparr, method="nearest")
+            #     harvarr = harvarr.interp_like(temparr, method="nearest")
 
 
             # Generate a vector of lower T bounds to use as metadata and speed up computation
