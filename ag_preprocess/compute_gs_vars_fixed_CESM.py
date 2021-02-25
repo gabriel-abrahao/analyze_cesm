@@ -28,7 +28,8 @@ scens       =   next(os.walk(baseinfolder))[1]
 
 crops = ["single","maize"]
 
-calname = "ming595_mean"
+# calname = "ming595_mean"
+calname = "Oct15-Mar1_Jan15-Jun15"
 
 temppref = "temp.daily."
 tmaxpref = "tmax.daily."
@@ -229,7 +230,8 @@ def calc_all(planmat,harvmat,tempmat,tmaxmat,tminmat,precmat,
 # ### Begin main script
 
 # %%
-# iscen = 2
+# iscen = 3
+# iscen = 12
 for iscen in range(len(scens)):
     # Scenario index override
     if ioverscen:
@@ -276,6 +278,7 @@ for iscen in range(len(scens)):
 
         #FIXME: Loop here
         # hyear = hyears[0]
+        # hyear = hyears[1]
         for hyear in tqdm.tqdm(hyears):
             # # These are for yearly calendars
             # planarr = caldata[planvar].sel(year = hyear)
@@ -292,9 +295,11 @@ for iscen in range(len(scens)):
             # Make sure the calendar arrays match the coordinates
             # FIXME: This could be done only once, but then we would have to read 
             # a climate array beforehand
+            # TODO: If we keep having issues with alignment, 
+            # maybe it's best to do the opposite and match climarrays to the common calendar
             if not (planarr["lat"].equals(temparr["lat"]) and planarr["lon"].equals(temparr["lon"]) ):
-                planarr = planarr.interp_like(temparr)
-                harvarr = harvarr.interp_like(temparr)
+                planarr = planarr.interp_like(temparr, method="nearest")
+                harvarr = harvarr.interp_like(temparr, method="nearest")
 
 
             # Generate a vector of lower T bounds to use as metadata and speed up computation
@@ -378,6 +383,13 @@ for iscen in range(len(scens)):
 
 
 
+# # %%
+# planarr = caldata[planvar]
+# planarr = planarr.interp_like(temparr, method="nearest")
+# planarr = planarr.interp_like(temparr, method="nearest")
+# planarr = planarr.interp_like(temparr, method="nearest")
+# planarr = planarr.interp_like(temparr, method="nearest")
+# planarr.plot()
+
+
 # %%
-
-
