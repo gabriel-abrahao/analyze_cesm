@@ -1,5 +1,5 @@
-# Creates daily agriculturally relevant variable files
-# based on model output on the CMIP standard format, not base CESM
+# Creates daily agriculturally relevant variable files based on CESM files
+# This basically copies some daily variables and degrades QREFHT as described below
 #
 # This and daily_ag_from_cesm.py will create output that is 
 # compatible with each other
@@ -25,36 +25,40 @@ from numba import jit,prange
 
 #%%
 baseoutfolder       =   "output_ag/ag_daily/"
-icleanout           =   True
+icleanout           =   True    # Cleans each ensemble member's output folder before starting to process it
 
-baseinfolder        =   "refdata/ccsm4/"
+baseinfolder        =   "input/rcp_daily"
 
-dayfoldersuf        =   "daily"
-monfoldersuf        =   "monthly"
+scenarios           =   ["rcp2.6_seg",  "rcp2.6_weg", "rcp8.5_seg",  "rcp8.5_weg"]
 
-scenarios           =   ["rcp2.6_cmp","rcp8.5_cmp","historical"]
+# Names of each variable
+varnames            =   ["PRECT","PS","TREFHT","TREFHTMX","TREFHTMN"]
 
-# File prefixes of each variable
-varprefs            =   ["pr","psl","tas","tasmax","tasmin"]
+monvarpref          =   "QREFHT"
 
-monvarpref          =   "huss"
+allvarnames = varnames.copy()
+allvarnames.append(monvarpref)
 
 # Full period, including the used range of all experiments
 fullsyear           =   1990
 fulleyear           =   2050
 
-# Convert CMIP ensemble member names to loosely match CESM numbers.
+# Convert ensemble member names to something. Shouldn't be necessary at this time
+# when using CESM, but keeping the option with a mirrored dict for now.
 # These should ensure no repeating names for the same scenario
 # Be aware that they are not continuation of the same runs
 ensmemdict          =   {
-    "r1i1p1"   :   "005",
-    "r2i1p1"   :   "006",
-    "r3i1p1"   :   "008",
-    "r4i1p1"   :   "009",
-    "r1i2p1"   :   "008",
-    "r6i1p1"   :   "009",
+    "005"   :   "005",
+    "006"   :   "006",
+    "008"   :   "008",
+    "009"   :   "009"
 }
 
+# Domain
+minlat = -61
+maxlat = 15
+minlon = 273
+maxlon = 345
 
 #%% Function definitions
 # =================================================================================================
@@ -114,19 +118,19 @@ def pad_months_repeat(inar):
 
     outar = xr.concat([firstmonth,inar,lastmonth], dim = "time").transpose(*inar.dims)
     return(outar)
+
 # =================================================================================================
 #%%
 # Create time slice TODO: We could support more calendars here if we put this inside the loops
 fullslice = slice(cftime.DatetimeNoLeap(fullsyear,1,1),cftime.DatetimeNoLeap(fulleyear+1,1,1))
 
-# scen = scenarios[2]
 # scen = scenarios[0]
 # == SCENARIOS LOOP
 for scen in scenarios:
-    sceninfolder = baseinfolder + "/" + scen + "/"
+    sceninfolder = baseinfolder + "/" + scen + "_"
     print(sceninfolder)
 
-    # ensmemin = "r1i2p1"
+    # ensmemin = "005"
     # == ENSEMBLE MEMBERS LOOP
     for ensmemin in ensmemdict.keys():
         ensmemout = ensmemdict[ensmemin]
@@ -137,10 +141,12 @@ for scen in scenarios:
         #         print(ensmemfolder)
 
         outensmemfolder = baseoutfolder + "/" + scen + "_" + ensmemout + "/"
+        print(outensmemfolder)
 
         if not os.path.exists(ensmemfolder):
             print("No member " + ensmemin + " for scenario " + scen + ", skipping...")
             continue
+
 
         # Create the output folder
         os.makedirs(outensmemfolder, exist_ok=True)
@@ -150,63 +156,65 @@ for scen in scenarios:
             for i in os.listdir(outensmemfolder):
                 os.remove(outensmemfolder + i)
 
+#%%
         # First operate on the daily variables
-        dayinfolder = ensmemfolder + "/" + dayfoldersuf + "/"
-        
+        dayinfolder = ensmemfolder + "/run/"
+
+        dayinfnames = glob.glob(dayinfolder + "/" + scen + "_" + ensmemin + ".*.nc")
+
         print("Copying daily...")
         # == VARIABLES LOOP (DAILY)
-        # varpref = varprefs[0]
-        for varpref in varprefs:
-            dayinfnames = glob.glob(dayinfolder + varpref + "_*")
+        # Read all files in a dataset and cut only desired years and variables
+        bigdayinds = xr.open_mfdataset(
+            dayinfnames, data_vars = allvarnames, parallel = True
+            )[allvarnames].sel(time = fullslice, lat = slice(minlat,maxlat), lon = slice(minlon,maxlon))
+        
+        # varpref = varnames[0]
+        # varpref = "TREFHTMN"
+        for varpref in varnames:
 
-            # Read all files in a dataset
-            dayinds = xr.open_mfdataset(dayinfnames)
+            # Extract the variable as a DataArray
+            dayinar = bigdayinds[varpref]
 
-            # Cut only desired years
-            dayinds = dayinds.sel(time = fullslice)
-
-            # Drop bounds
-            dayinar = drop_bounds(dayinds)
-
-            # Rename variable
-            dayinar.name = get_original_name(dayinar)
-
+            # year = 2005
             # == YEARLY LOOP (DAILY)
             for year in tqdm.tqdm(range(fullsyear,fulleyear+1), desc=varpref):
 
-                yearslice = slice(cftime.DatetimeNoLeap(year,1,1),cftime.DatetimeNoLeap(year+1,1,1))
+                # Apparently we need 31/12/year for CESM and 01/01/year+1 for CMIP
+                yearslice = slice(cftime.DatetimeNoLeap(year,1,1), \
+                    add_days(cftime.DatetimeNoLeap(year+1,1,1,0,0,0,0),-1))
 
                 # Yearly array (may be empty, time length zero)
                 ydayar = dayinar.sel(time = yearslice)
 
+                # Check if the year has exactly 365 days, or skip it if zero
+                # Some issues may arise on yearslice with the last day that
+                # can lead to 364 or 366 days.
+                if len(ydayar.time) == 0:
+                    continue
+                elif len(ydayar.time) != 365:
+                    raise NameError("Year " + str(year) + " has " + str(len(ydayar.time)) + "days, check yearslice")
+
+
                 # Reproduce a CESM history file name 
                 yfname = outensmemfolder + scen + "_" + ensmemout + ".cam2.h1." + str(year) + "-01-01-00000.nc"
 
-                if len(ydayar.time) != 0:
-                    # Writes/appends to output. 
-                    nc_write_append_dataarray(ydayar,yfname)
+                # Writes/appends to output. 
+                nc_write_append_dataarray(ydayar,yfname)
 
         # THIS SHOULD BE RIGHT OUTSIDE THE VARIABLES LOOP
         # Now we interpolate the monthly variable
+        # Since we have daily files, we will average first and then 
+        # interpolate normally to ensure consistency
         print("Iterpolating monthly...")
         # We should have a leftover in dayinarr to get its time
         daytime = dayinar.time
 
-        moninfolder = ensmemfolder + "/" + monfoldersuf + "/"
+        # Get the original daily variable
+        dayinar = bigdayinds[monvarpref]
 
-        moninfnames = glob.glob(moninfolder + monvarpref + "_*")
-
-        # Read all files in a dataset
-        moninds = xr.open_mfdataset(moninfnames)
-
-        # Cut only desired years
-        moninds = moninds.sel(time = fullslice)
-
-        # Obtain DataArray
-        moninar = drop_bounds(moninds)
-
-        # Rename variable
-        moninar.name = get_original_name(moninar)
+        # Resample. Parameters shift labels to be centered on the 15th of each month
+        moninar = dayinar.resample(time = "1M", label="left", loffset="15D").mean()
 
         # Repeat first and last months for extrapolation
         moninar = pad_months_repeat(moninar)
@@ -214,10 +222,15 @@ for scen in scenarios:
         # == YEARLY LOOP (DAILY)
         for year in tqdm.tqdm(range(fullsyear,fulleyear+1)):
 
+            # Apparently we need 31/12/year for CESM and 01/01/year+1 for CMIP
+            yearslice = slice(cftime.DatetimeNoLeap(year,1,1), \
+            add_days(cftime.DatetimeNoLeap(year+1,1,1,0,0,0,0),-1))            
+
             # A time vector with the days of that year
             # Selecting from daytime ensures metadata are the same
             # and allows us to test for its size
-            ydaytime = daytime.sel(time = slice(cftime.DatetimeNoLeap(year,1,1),cftime.DatetimeNoLeap(year+1,1,1)))
+            # ydaytime = daytime.sel(time = slice(cftime.DatetimeNoLeap(year,1,1),cftime.DatetimeNoLeap(year+1,1,1)))
+            ydaytime = daytime.sel(time = yearslice)
 
             if len(ydaytime) != 0:
                 # Do the actual interpolation
@@ -228,3 +241,4 @@ for scen in scenarios:
 
                 # Writes/appends to output. 
                 nc_write_append_dataarray(outintmonar,yfname)
+
