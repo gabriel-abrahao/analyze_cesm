@@ -1,5 +1,8 @@
 #%%
 import numpy as np
+import xarray as xr
+from scipy.stats import ttest_ind_from_stats
+import re
 import numba
 from numba import jit, vectorize, guvectorize
 import dask.array as da
@@ -85,6 +88,94 @@ def pool_variances_dask(means, variances,n):
         mp = pool_pair_means(mp,means[i+1],rn)
         # i = i + 1
     return(vp)
+
+# Add a suffix to all variables in a Dataset
+def add_suf(ds,suf):
+    return(ds.rename({i:(i + suf) for i in ds.data_vars}))
+
+# Removes a suffix from all variables in a Dataset
+def rem_suf(ds,suf):
+    return(ds.rename({i:(re.sub("(.*)"+suf+"$","\g<1>",i)) for i in ds.data_vars}))
+
+# Splits a dataset that has means and variances coded by name. 
+# e.g. the mean of variable X is in variable X and it's variance is in X_val
+def split_dataset_variances_generic(dsboth):
+    regexvar = re.compile(".*_var$")
+    dsmeans = dsboth[[i for i in dsboth.data_vars if not regexvar.match(i)]]
+    dsvariances = dsboth[[i for i in dsboth.data_vars if regexvar.match(i)]]
+    dsvariances = dsvariances.rename({i:(re.sub("(.*)_var$","\g<1>",i)) for i in dsvariances.data_vars})
+
+    # Select just the desired variables
+    # dsmeans = dsmeans[selvars]
+    # dsvariances = dsvariances[selvars]
+
+    return((dsmeans, dsvariances))
+
+# Does the opposite, combining two datasets by appending "_var" to one of them
+def combine_dataset_variances_generic(dsmeans, dsvariances):
+    dsvariances = add_suf(dsvariances,"_var")
+    dsout = dsmeans.merge(dsvariances)
+    return(dsout)
+
+# Adds or subtracts two datasets and combine their variances,
+# assuming they are uncorrelated. Therefore the variances are just added
+def addsub_ds_variances(ds1,ds2,addsub):
+    (ds1means, ds1variances) = split_dataset_variances_generic(ds1)
+    (ds2means, ds2variances) = split_dataset_variances_generic(ds2)
+
+    if addsub == "add":
+        dsresmeans = ds1means + ds2means
+    elif addsub == "sub":
+        dsresmeans = ds1means - ds2means
+    else:
+        raise NameError("addsub_ds_variances() argument addsub must be either 'add' or 'sub'")
+    dsresvariances = ds1variances + ds2variances
+
+    dsout = combine_dataset_variances_generic(dsresmeans, dsresvariances)
+    return(dsout)
+    
+
+# Calculates the difference between "contvarname" and "overvars" in a dataset
+# and also returns a "contvarname"_pval variable with the p-values of a
+# t-test on the difference of two means given a "contvarname"_var variable
+def calc_diff_ttest_generic(dsboth1, dsboth2, nobs):
+
+    (dsmeans1, dsvariances1) = split_dataset_variances_generic(dsboth1)
+    (dsmeans2, dsvariances2) = split_dataset_variances_generic(dsboth2)
+
+    diff = dsmeans1 - dsmeans2
+
+    # t-test
+    # testvarnames = selvars
+
+    dsttest = xr.apply_ufunc(
+            ttest_ind_from_stats,
+            dsmeans1,
+            dsvariances1**0.5,
+            nobs,
+            dsmeans2,
+            dsvariances2**0.5,
+            nobs,
+            True,
+            input_core_dims=[[], [], [], [], [], [], []],
+            output_core_dims=[[], []],
+            vectorize=True,
+            # keep_attrs=True,
+            dask='parallelized',
+        )[1]
+
+    dsttest = dsttest.rename({i:(i + "_pval") for i in dsttest.data_vars})
+    
+    # Variance of the difference
+    dsvariances = dsvariances1 + dsvariances2
+    dsvariances = dsvariances.rename({i:(i + "_var") for i in dsvariances.data_vars})
+    
+    diff = diff.merge(dsttest)
+    diff = diff.merge(dsvariances)
+    # diff.expand_dims("lev")
+    # diff["lev"] = np.array(uselev)
+    # (diff,dump) = xr.broadcast(diff, dsboth1)
+    return(diff)
 
 # #%%
 # mat = np.random.normal(4,1,size = (2,3,4,40))
