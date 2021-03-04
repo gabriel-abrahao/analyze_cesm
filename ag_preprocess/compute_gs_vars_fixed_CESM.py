@@ -287,8 +287,6 @@ for iscen in range(len(scens)):
         harvarr.name = caldata[harvvar].name
         xr.merge([planarr,harvarr]).to_netcdf(outfolder+"aux.calendar."+".nc")
         
-
-        #FIXME: Loop here
         # hyear = hyears[0]
         # hyear = hyears[1]
         for hyear in tqdm.tqdm(hyears):

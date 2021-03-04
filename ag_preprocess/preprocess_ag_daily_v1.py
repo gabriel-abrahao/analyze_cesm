@@ -93,7 +93,7 @@ def brazil_lon_unflip(d):
 # %%
 
 # Read topography and reference grid
-topo = xr.open_dataarray(topofname)
+basetopo = xr.open_dataarray(topofname)
 refgrid = xr.open_dataset(reffname)
 refgrid = refgrid[[i for i in refgrid.data_vars.keys()][0]]
 try:
@@ -141,9 +141,11 @@ for scen in scens:
     # %% VPD
 
     # Interpolate topography to generate a pressure field
-    if global_is_lon_flipped(topo) != global_is_lon_flipped(bigds):
-        topo = global_lon_unflip(topo)
-    topo = topo.interp_like(bigds)
+    if global_is_lon_flipped(basetopo) != global_is_lon_flipped(bigds):
+        topo = global_lon_unflip(basetopo)
+    else:
+        topo = basetopo
+    topo = topo.interp_like(bigds, method = "nearest")
     pres = 1013.25*np.exp((-1)*(1.602769777072154)*np.log((np.exp(topo/10000.0)*213.15+75.0)/288.15))
 
     bigds["estmax"]=6.1078*np.exp((17.3*bigds["tmax"])/(237.3+bigds["tmax"]))
@@ -157,7 +159,7 @@ for scen in scens:
 
     bigds[vpdvarname].attrs["long_name"] = "Vapour pressure deficit"
     bigds[vpdvarname].attrs["units"] = "hPa"
-    bigds[vpdvarname]
+    # bigds[vpdvarname]
 
     # %%
     # Drop intermediate variables
@@ -174,9 +176,11 @@ for scen in scens:
     # outds = bigds.interp_like(refgrid)
     outds = bigds
 
+    # print(np.min(np.where(outds[vpdvarname].isel(time=0).mean("lon") == 0)))
     #%%
     print("Writing variables...")
     for varname in tqdm.tqdm(keepnames):
+    # for varname in [vpdvarname]:
         scenoutfolder = outfolder + "/" + scen + "/"
         # Create output folder
         if not os.path.exists(scenoutfolder): os.makedirs(scenoutfolder, exist_ok=True)
