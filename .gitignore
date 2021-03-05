@@ -1,11 +1,17 @@
+external/**
 input/**
 output/**
 output_ag/**
 output_plots/**
 output_rainy_season/**
-regions/**
+regions/*.csv
 refdata/**
 output_small/**
+fortan/*.so
+fortan/*.o
+fortan/*.h
+**/*.nc
 __pycache__
 .vscode
+
 
