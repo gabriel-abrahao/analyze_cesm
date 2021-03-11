@@ -42,7 +42,8 @@ shpfname = "/home/gabriel/shapefiles/estados_2010.shp"
 
 pdffname = "tests/landuse.pdf"
 
-years = [2005,2030,2050]
+years = [1980,2030,2050]
+# years = [2005,2030,2050]
 
 # maxlat = 5.0
 # minlat = -33.0

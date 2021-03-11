@@ -18,12 +18,15 @@ import plotnine as p9
 #%%
 # REMEMBER PATHS ARE RELATIVE TO THE SCRIPT FOLDER!
 motherfolder = "../"
+ifutdelta = True
 
 crop = "single"
 calname = "Oct15-Mar1_Jan15-Jun15"
 
 baseinfolder = motherfolder + "output_ag/ag_vars/" + calname + "/" # Below here should be scenario folders, and below them the files
-
+infsuf = ".allscens.estimated.nc"
+if ifutdelta:
+    infsuf = ".futdelta.20122030-20322050.allscens.estimated.nc"
 
 # Plot deforestation X effects?
 idefplots = False
@@ -84,7 +87,11 @@ if len(sigmodes) == 0:
 # domain = "SAMATL" # South america and Atlantic Ocean
 domain = "BR" # Zoom in Brazil
 
-plotfname = "../output_plots/ag_new/" + "/" + contvarname + "/deltahist_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) 
+futstr = ""
+if ifutdelta:
+    futstr = "fut_"
+plotfname =     "../output_plots/ag_new/" + "/" + contvarname + "/" + futstr + "deltahist_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) 
+efplotfname =   "../output_plots/ag_new/" + "/" + contvarname + "/" + futstr + "effects_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) 
 
 wks_type = "png"
 
@@ -112,6 +119,9 @@ if contvarname == "tempmean":
     deltalevels = np.arange(-4,4.1,.5)
     # eflevels = np.arange(-3,3.1,0.25)
     eflevels = np.arange(-2,2.1,0.25)
+    if ifutdelta:
+        deltalevels = deltalevels/2.0
+        eflevels = eflevels/2.0
     reversecolormap = False 
     reversedeltacolormap = False
     icolormapoverride   = False
@@ -119,7 +129,10 @@ if contvarname == "tempmean":
 elif contvarname == "agestimate":
     contlevels  = np.arange(0,10,1)
     deltalevels = np.arange(-30,30.1,5)
-    eflevels = np.arange(-2,2.1,0.25)
+    eflevels = np.arange(-18,18.1,3)
+    if ifutdelta:
+        deltalevels = deltalevels/2.0
+        eflevels = np.arange(-12,12.1,2)
     reversecolormap = False 
     reversedeltacolormap = True
     icolormapoverride   = True
@@ -368,7 +381,7 @@ def summarise_rainy_season(ds, syear, eyear):
 #%%
 # ============================================= BEGIN READING FILES
 
-deltafname = baseinfolder + "/" + crop + ".allscens.estimated.nc" 
+deltafname = baseinfolder + "/" + crop + infsuf
 deltads = xr.open_dataset(deltafname)
 
 # Reorder scenarios
@@ -463,6 +476,10 @@ def set_common_resources():
     res.tmYLOn          =   False
 
     res.mpGridAndLimbOn =   False
+    # res.tmXBBorderOn    =   False
+    # res.tmXTBorderOn    =   False
+    # res.tmYLBorderOn    =   False
+    # res.tmYRBorderOn    =   False
 
     res.mpGeophysicalLineThicknessF = 3.0
     res.mpProvincialLineThicknessF  = 2.0
@@ -541,4 +558,92 @@ Ngl.panel(wks,splots,[2,len(scenarios)/2],spanelres)
 
 Ngl.delete_wks(wks)
 
-#%%
+# %% ===================== CALCULATING EFFECTS ========================================
+# Subtract all EG scenarios to their CMIP reference
+efds26 = deltads.sel(scenario = ["rcp2.6_seg","rcp2.6_weg"]) - deltads.sel(scenario = ["rcp2.6_cmp"]).squeeze("scenario", drop = True)
+efds85 = deltads.sel(scenario = ["rcp8.5_seg","rcp8.5_weg"]) - deltads.sel(scenario = ["rcp8.5_cmp"]).squeeze("scenario", drop = True)
+efds = xr.merge([efds26,efds85])
+
+# %% ===================== EFFECTS PLOTS ==============================================
+eflabelstring = deltads[contvarname].attrs["long_name"] + " relative to CMIP5"\
+    " (" + deltads[contvarname].attrs["units"] + ")"
+if ifutdelta:
+    eflabelstring = "Difference in " + deltads[contvarname].attrs["long_name"] + " relative to CMIP5"\
+        " (" + deltads[contvarname].attrs["units"] + ")"
+
+
+wksres = Ngl.Resources()
+wksres.wkHeight = 2048
+wksres.wkWidth = 2048
+wks = Ngl.open_wks(wks_type,efplotfname,wksres)  # Open a workstation.
+
+# Resources for reference contour/fill plots
+efcontres = set_common_resources()
+
+efcontres.cnFillOn               = True
+efcontres.cnLinesOn              = False
+efcontres.cnLineLabelsOn         = False
+efcontres.cnFillMode             = "RasterFill"
+
+efcontres.lbLabelBarOn           = False
+
+efcontres.mpOutlineBoundarySets = "NoBoundaries"
+
+scolormap = Ngl.read_colormap_file("BlueWhiteOrangeRed")
+if reversedeltacolormap:
+    scolormap = scolormap[::-1]
+
+# efcontres.cnFillPalette           =   "BlueWhiteOrangeRed"
+efcontres.cnFillPalette           =   scolormap
+efcontres.cnLevelSelectionMode    =   "ExplicitLevels"
+efcontres.cnLevels    =   eflevels
+
+
+# Scenario Plots
+efplots = []
+effigstrs = []
+scenarios = efds.scenario.values.tolist()
+# for scen in scenarios:
+#     for usemon in usemons:
+for scen in scenarios:
+    # contres.tiMainString = usemon
+    dssubset = efds.sel(scenario = scen, statmodel = usemodelstr)
+    contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),efcontres)
+
+    if "cont" in sigmodes:
+        dssubset[contvarname] = dssubset[contvarname].where(dssubset[contvarname+"_pval"]<=siglev,np.nan)
+
+    # contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),efcontres)
+    
+    efplots.append(contplot)
+    effigstrs.append(str(scen))
+
+efpanelres                                  = Ngl.Resources()
+efpanelres.nglPanelFigureStrings            = effigstrs
+efpanelres.nglPanelFigureStringsFontHeightF = 0.01
+efpanelres.nglPanelLabelBar                 = True     # Turn on panel labelbar
+# efpanelres.nglPanelLabelBar                 = True     # Turn on panel labelbar
+efpanelres.nglPanelLabelBarLabelFontHeightF = 0.01    # Labelbar font height
+efpanelres.nglPanelLabelBarHeightF          = 0.03   # Height of labelbar
+# efpanelres.nglPanelLabelBarWidthF           = 0.700    # Width of labelbar
+# efpanelres.nglPanelTop                      = 0.75
+efpanelres.nglPanelBottom                      = 0.05
+# efpanelres.nglPanelLeft                      = 0.2
+
+# efpanelres.nglMaximize = True
+# efpanelres.nglFrame = False
+
+efpanelres.lbTitleString          =   eflabelstring
+efpanelres.lbTitlePosition          =   "Bottom"
+efpanelres.lbTitleFontHeightF          =   0.01
+efpanelres.lbJustification          = "TopCenter"
+
+if addsiglabel:
+    efpanelres.lbTitleString = efpanelres.lbTitleString + "~C~Showing differences significant at " + str(siglev*100) + "%"
+
+Ngl.panel(wks,efplots,[2,len(scenarios)/2],efpanelres)
+
+# print(Ngl.retrieve_colormap(wks))
+# print(Ngl.read_colormap_file("BlueWhiteOrangeRed"))
+
+Ngl.delete_wks(wks)
