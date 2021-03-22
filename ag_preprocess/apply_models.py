@@ -131,8 +131,8 @@ overscenindex = 2
 if ioverscen:
     print("====================================================\n===== WARNING: Skipping to scenario index " + str(overscenindex) + " ========\n====================================================")
 
-#%% Function definitions    ===============================================================
-
+#%% Function definitions    ===========================================================================================================================================
+# ====================================================================================================================================================================
 # Adds metadata to several variables based on a dictionary
 def add_meta_dict(ds,metadict):
     for varname in metadict.keys():
@@ -353,7 +353,9 @@ def calc_diff_ttest_withperc(dsboth1, dsboth2, nobs, percnames):
     # (diff,dump) = xr.broadcast(diff, dsboth1)
     return(diff)
 
-#%% ============================ MAIN SCRIPT
+#%%  MAIN SCRIPT ===========================================================================================================================================
+# ====================================================================================================================================================================
+
 # TODO: We must calculate anomalies of variables instead of levels first,
 # before the deltas.
 # Those anomalies should be in relation to the historical period mean,
