@@ -177,6 +177,12 @@ def calc_diff_ttest_generic(dsboth1, dsboth2, nobs):
     # (diff,dump) = xr.broadcast(diff, dsboth1)
     return(diff)
 
+# Sums all Dataarrays in a Dataset
+def sum_all_variables(pds):
+    outda = sum([pds[d] for d in pds.data_vars])
+    outda.name = "sumvars"
+    return(outda)
+
 # #%%
 # mat = np.random.normal(4,1,size = (2,3,4,40))
 # mmat = np.mean(mat, axis = 3)
