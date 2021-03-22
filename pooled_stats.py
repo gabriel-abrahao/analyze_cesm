@@ -135,9 +135,9 @@ def addsub_ds_variances(ds1,ds2,addsub):
     return(dsout)
     
 
-# Calculates the difference between "contvarname" and "overvars" in a dataset
-# and also returns a "contvarname"_pval variable with the p-values of a
-# t-test on the difference of two means given a "contvarname"_var variable
+# Calculates the difference between all variables in a dataset
+# and also returns a _pval variable for each input variable with the p-values of a
+# t-test on the difference of two means given a _var variable for each one
 def calc_diff_ttest_generic(dsboth1, dsboth2, nobs):
 
     (dsmeans1, dsvariances1) = split_dataset_variances_generic(dsboth1)
