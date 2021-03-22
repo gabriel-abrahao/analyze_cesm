@@ -423,7 +423,7 @@ for crop in crops:
     # ======================= t-tests
     print("Performing t-tests...")
     # Differences compared to historical, with t-test pvalues
-    deltattests = calc_diff_ttest_withperc(fmvds, hmvds, hmvds.attrs["nobs_var"], ["agetimate", "gdd", "edd", "vpdmean", "precmean"])
+    deltattests = calc_diff_ttest_withperc(fmvds, hmvds, hmvds.attrs["nobs_var"], ["agestimate", "gdd", "edd", "vpdmean", "precmean"])
 
     # ===================== END NEW, REVISE AFTER HERE
     # # TODO: Ideally we would estimate the models before aggregating,
