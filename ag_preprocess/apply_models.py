@@ -7,6 +7,8 @@ import importlib
 import numpy as np
 import pandas as pd
 import xarray as xr
+from scipy.stats import ttest_ind_from_stats
+
 import cftime
 import tqdm
 import os
@@ -78,15 +80,17 @@ basevaledd = 30.0
 # RDS file containing the estimated R lm() models
 # modelsfname = "../../climate-soybeans/models/fixed_calendar/model.ming595_yearly_fill.xavier.single.2.rds"
 modelsfname = "../../climate-soybeans/models/fixed_calendar/model.v3.ming595_yearly_fill.xavier.single.2.rds"
-modelname = "fit.fe.gddedd"
-modelstring = "GDD+EDD"
-# modelname = "fit.anom.gddedd"
-# modelstring = "GDD+EDD"
-# modelname = 'fit.anom.gddeddvpd.prec2'
-# modelstring = "GDD+EDD+VPD+Prec"
-# modelname = 'fit.anom.gddeddvpd' # FIXME: Something's wrong with VPD
-# modelstring = "GDD+EDD+VPD"
+modelsfnamesdict = {
+    "single" : "../../climate-soybeans/models/fixed_calendar/model.v3.ming595_yearly_fill.xavier.single.2.rds",
+    "maize" : "../../climate-soybeans/models/fixed_calendar/model.v3.ming595_yearly_fill.xavier.maize.2.rds",
 
+}
+
+modelstringsdict = {"fit.fe.vpd" : "VPD",
+                   "fit.fe.gddedd" : "GDD + EDD",
+                   "fit.fe.gddeddvpd" : "GDD + EDD + VPD",
+                   "fit.fe.gddeddvpd.prec" : "GDD + EDD + VPD + Prec"}
+modelnames = list(modelstringsdict.keys())
 
 # Dictionary translating variables as they appear in the 
 # R model objects to the names in the NetCDF datasets
@@ -94,6 +98,11 @@ modelvardict = {
     "gdd1030dm" : "gdd",
     "edd30dm" : "edd",
     "vpdmeandm" : "vpdmean",
+    "precmeandm" : "precmean",
+    "I(precmeandm^2)" : "precmean2",
+    "gdd1030" : "gdd",
+    "edd30" : "edd",
+    "vpdmean" : "vpdmean",
     "precmean" : "precmean",
     "I(precmean^2)" : "precmean2"
     }
@@ -266,8 +275,84 @@ def apply_model_novar(ds,mds):
 
     # Exponentiate since models are log
     estdameans = (100.0*(np.exp(estdameans)-1))
+    estdameans.name = "agestimate"
 
     return(estdameans)
+
+# Applies a single model on levels (i.e. not differences),
+# ignoring variances and assuming all derived model
+# terms are already calculated (e.g. squared variable) and have 
+# properly named variables
+# Keep in mind that, since we are ignoring the fixed effects here,
+# levels may be only compared to each other (in percent form i.e. (Y2-Y1)/Y1), and will be in log form
+# FIXME: Figure out a good way to calculate estimate variances
+def apply_model_level_novar(ds,mds):
+    (dsmeans, dsvariances) = pooled_stats.split_dataset_variances_generic(ds)
+
+    (mdsmeans, mdsvariances) = pooled_stats.split_dataset_variances_generic(mds)
+
+
+    # DataArray with estimated means
+    estdameans = pooled_stats.sum_all_variables(dsmeans*mdsmeans)
+
+    # Exponentiate since models are log
+    # We can consider that Y = exp(B1*X) here, ignoring B0 or fixed effects
+    # if we will only compare them with each other in percent such as (Y2-Y1)/Y1
+    # estdameans = (100.0*(np.exp(estdameans)-1))
+    estdameans = np.exp(estdameans)
+    estdameans.name = "agestimate"
+    estdameans = estdameans.assign_coords({"statmodel" : mds.attrs["modelstring"]}).expand_dims("statmodel")
+
+
+    return(estdameans)
+
+
+# Calculates the difference between all variables in a dataset, additionally calculating
+# percent differences in for variables in percnames
+# and also returns a _pval variable for each input variable with the p-values of a
+# t-test on the difference of two means given a _var variable for each one
+def calc_diff_ttest_withperc(dsboth1, dsboth2, nobs, percnames):
+
+    (dsmeans1, dsvariances1) = pooled_stats.split_dataset_variances_generic(dsboth1)
+    (dsmeans2, dsvariances2) = pooled_stats.split_dataset_variances_generic(dsboth2)
+
+    diff = dsmeans1 - dsmeans2
+
+    diffperc = (dsmeans1[percnames] - dsmeans2[percnames])/dsmeans2[percnames]
+    diffperc = diffperc.rename({i:(i + "_perc") for i in diffperc.data_vars})
+
+    # t-test
+    # testvarnames = selvars
+
+    dsttest = xr.apply_ufunc(
+            ttest_ind_from_stats,
+            dsmeans1,
+            dsvariances1**0.5,
+            nobs,
+            dsmeans2,
+            dsvariances2**0.5,
+            nobs,
+            True,
+            input_core_dims=[[], [], [], [], [], [], []],
+            output_core_dims=[[], []],
+            vectorize=True,
+            # keep_attrs=True,
+            dask='parallelized',
+        )[1]
+
+    dsttest = dsttest.rename({i:(i + "_pval") for i in dsttest.data_vars})
+    
+    # Variance of the difference
+    dsvariances = dsvariances1 + dsvariances2
+    dsvariances = dsvariances.rename({i:(i + "_var") for i in dsvariances.data_vars})
+    
+    diff = diff.merge(dsttest)
+    diff = diff.merge(dsvariances)
+    # diff.expand_dims("lev")
+    # diff["lev"] = np.array(uselev)
+    # (diff,dump) = xr.broadcast(diff, dsboth1)
+    return(diff)
+
 #%% ============================ MAIN SCRIPT
 # TODO: We must calculate anomalies of variables instead of levels first,
 # before the deltas.
@@ -287,6 +372,7 @@ def apply_model_novar(ds,mds):
 for crop in crops:
     print(crop)
     cropstr = cropstrdict[crop]
+    modelsfname = modelsfnamesdict[crop]
     print("Opening climate scenarios...")
     # Open all future and historical data in separate big datasets
     # listallds = [[dataset_open_ens_folder(basecalfolder, enscode, scen, crop) for scen in allscens] for enscode in enscodes]
@@ -315,57 +401,82 @@ for crop in crops:
     hbiginds = calc_gdd_edd(hbiginds, basevalgdd, basevaledd)
     fbiginds = calc_gdd_edd(fbiginds, basevalgdd, basevaledd)
 
-    # TODO: Ideally we would estimate the models before aggregating,
-    # but since these are anomaly models does it make sense to work with
-    # actual levels before calculating differences?
+    # ======================= Applying stat models
+    hbigestds = hbiginds
+    fbigestds = fbiginds
 
-    # Calculate means and variances
-    hmvds = calc_ds_mean_and_var(hbiginds, dims=["year","member"])
-    fmvds = calc_ds_mean_and_var(fbiginds, dims=["year","member"])
+    for modelname in modelnames:
+        modelstring = modelstringsdict[modelname]    
 
+        modelds = read_R_model_dataset(modelsfname, modelname, modelvardict)
+        modelds.attrs["modelstring"] = modelstring
+
+        # Apply model and get levels
+        hbigestds = hbigestds.merge(apply_model_level_novar(hbiginds, modelds))
+        fbigestds = fbigestds.merge(apply_model_level_novar(fbiginds, modelds))
+
+
+    # ======================= Calculate means and variances
+    hmvds = calc_ds_mean_and_var(hbigestds, dims=["year","member"])
+    fmvds = calc_ds_mean_and_var(fbigestds, dims=["year","member"])
+
+    # ======================= t-tests
     print("Performing t-tests...")
     # Differences compared to historical, with t-test pvalues
-    deltattests = pooled_stats.calc_diff_ttest_generic(fmvds, hmvds, hmvds.attrs["nobs_var"])
+    deltattests = calc_diff_ttest_withperc(fmvds, hmvds, hmvds.attrs["nobs_var"], ["agetimate", "gdd", "edd", "vpdmean", "precmean"])
 
-    # Just the p-values of climate variables t-tests
-    deltapvals = deltattests[[i for i in deltattests.data_vars if re.match(".*_pval",i)] ]
+    # ===================== END NEW, REVISE AFTER HERE
+    # # TODO: Ideally we would estimate the models before aggregating,
+    # # but since these are anomaly models does it make sense to work with
+    # # actual levels before calculating differences?
 
-    # Differences from historical for climate variables only
-    deltaclim = pooled_stats.addsub_ds_variances(fmvds,hmvds, "sub")
+    # # Calculate means and variances
+    # hmvds = calc_ds_mean_and_var(hbiginds, dims=["year","member"])
+    # fmvds = calc_ds_mean_and_var(fbiginds, dims=["year","member"])
 
-    print("Applying statistical models...")
-    # Read model coefficients from R (using rpy2) and convert them 
-    # to a Dataset with variables renamed and variances added
-    modelds = read_R_model_dataset(modelsfname, modelname, modelvardict)
-    # modelds = read_R_model_dataset(modelsfname, "fit.anom.gddeddvpd.prec2", modelvardict)
+    # print("Performing t-tests...")
+    # # Differences compared to historical, with t-test pvalues
+    # deltattests = pooled_stats.calc_diff_ttest_generic(fmvds, hmvds, hmvds.attrs["nobs_var"])
 
-    # Apply a single model without calculating variances
-    estdelta = apply_model_novar(deltaclim,modelds)
-    estdelta.name = "agestimate"
-    estdelta = estdelta.assign_coords({"statmodel" : modelstring}).expand_dims("statmodel")
+    # # Just the p-values of climate variables t-tests
+    # deltapvals = deltattests[[i for i in deltattests.data_vars if re.match(".*_pval",i)] ]
 
-    # Append ag model estimates
-    deltaclim = deltaclim.merge(estdelta)
+    # # Differences from historical for climate variables only
+    # deltaclim = pooled_stats.addsub_ds_variances(fmvds,hmvds, "sub")
 
-    # Append climate t-test p-values
-    deltaclim = deltaclim.merge(deltapvals)
+    # print("Applying statistical models...")
+    # # Read model coefficients from R (using rpy2) and convert them 
+    # # to a Dataset with variables renamed and variances added
+    # modelds = read_R_model_dataset(modelsfname, modelname, modelvardict)
+    # # modelds = read_R_model_dataset(modelsfname, "fit.anom.gddeddvpd.prec2", modelvardict)
 
-    # Add metadata for some variables
-    deltaclim = add_meta_dict(deltaclim, metadict)
-    deltaclim["agestimate"].attrs["long_name"] = cropstr + " " + deltaclim["agestimate"].attrs["long_name"]
+    # # Apply a single model without calculating variances
+    # estdelta = apply_model_novar(deltaclim,modelds)
+    # estdelta.name = "agestimate"
+    # estdelta = estdelta.assign_coords({"statmodel" : modelstring}).expand_dims("statmodel")
 
-    # Output folder for that calendar
-    outfolder = baseoutfolder + "/" + calname + "/" 
+    # # Append ag model estimates
+    # deltaclim = deltaclim.merge(estdelta)
 
-    # Create output folder
-    os.makedirs(outfolder, exist_ok=True)
+    # # Append climate t-test p-values
+    # deltaclim = deltaclim.merge(deltapvals)
 
-    # Main output file name
-    # outfname = outfolder + crop + ".allscens.estimated.nc"
-    outfname = outfolder + crop + outfnamesuf
+    # # Add metadata for some variables
+    # deltaclim = add_meta_dict(deltaclim, metadict)
+    # deltaclim["agestimate"].attrs["long_name"] = cropstr + " " + deltaclim["agestimate"].attrs["long_name"]
+
+    # # Output folder for that calendar
+    # outfolder = baseoutfolder + "/" + calname + "/" 
+
+    # # Create output folder
+    # os.makedirs(outfolder, exist_ok=True)
+
+    # # Main output file name
+    # # outfname = outfolder + crop + ".allscens.estimated.nc"
+    # outfname = outfolder + crop + outfnamesuf
      
-    print("Writing output file...")
-    # Write output
-    deltaclim.to_netcdf(outfname)
+    # print("Writing output file...")
+    # # Write output
+    # deltaclim.to_netcdf(outfname)
 
 #%%
