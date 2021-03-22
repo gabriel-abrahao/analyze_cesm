@@ -134,7 +134,13 @@ for scen in scens:
     ## %%
     # Precipitation
     meta = copy.deepcopy(bigds[precvarname].attrs)
-    bigds[precvarname] = bigds[precvarname] * 86400000.0
+    if meta["units"] == "m/s":
+        convfac = 86400000.0
+    elif meta["units"] == "kg m-2 s-1":
+        convfac = 86400.0    
+    else:
+        raise NameError("Unknown precipitation units " + meta["units"])
+    bigds[precvarname] = bigds[precvarname] * convfac
     bigds[precvarname].attrs = meta
     bigds[precvarname].attrs["units"] = "mm day-1"
 
