@@ -116,7 +116,8 @@ metadict = {
     "vpdmean" : {"long_name" : "Mean daily vapour pressure deficit", "units" : "hPa"},
     "gdd" : {"long_name" : "Season GDD (10°C-30°C)", "units" : "°C day"},
     "edd" : {"long_name" : "Season EDD (10°C-30°C)", "units" : "°C day"},
-    "agestimate" : {"long_name" : "yield change", "units" : "%"}
+    "agestimate" : {"long_name" : "yield, DO NOT USE, no fixed effects. Use agestimate_perc instead", "units" : "t/ha"},
+    "agestimate_perc" : {"long_name" : "yield change", "units" : "%"}
 }
 
 # Output file suffix (crop + outfnamesuf)
@@ -340,6 +341,10 @@ def calc_diff_ttest_withperc(dsboth1, dsboth2, nobs, percnames):
             dask='parallelized',
         )[1]
 
+    # Associate the p-values of differences to the percent differences as well
+    dsttest = dsttest.merge(pooled_stats.add_suf(dsttest[percnames],"_perc"))
+
+    # Add _pval to the names
     dsttest = dsttest.rename({i:(i + "_pval") for i in dsttest.data_vars})
     
     # Variance of the difference
@@ -348,6 +353,7 @@ def calc_diff_ttest_withperc(dsboth1, dsboth2, nobs, percnames):
     
     diff = diff.merge(dsttest)
     diff = diff.merge(dsvariances)
+    diff = diff.merge(diffperc)
     # diff.expand_dims("lev")
     # diff["lev"] = np.array(uselev)
     # (diff,dump) = xr.broadcast(diff, dsboth1)
@@ -424,61 +430,28 @@ for crop in crops:
 
     # ======================= t-tests
     print("Performing t-tests...")
-    # Differences compared to historical, with t-test pvalues
+    # Differences compared to historical, with t-test pvalues 
+    # and percent differences for variables listed in the last argument
     deltattests = calc_diff_ttest_withperc(fmvds, hmvds, hmvds.attrs["nobs_var"], ["agestimate", "gdd", "edd", "vpdmean", "precmean"])
 
-    # ===================== END NEW, REVISE AFTER HERE
-    # # TODO: Ideally we would estimate the models before aggregating,
-    # # but since these are anomaly models does it make sense to work with
-    # # actual levels before calculating differences?
+    # Adding some metadata
+    deltattests = add_meta_dict(deltattests, metadict)
+    deltattests["agestimate"].attrs["long_name"] = cropstr + " " + deltattests["agestimate"].attrs["long_name"]
+    deltattests["agestimate_perc"].attrs["long_name"] = cropstr + " " + deltattests["agestimate_perc"].attrs["long_name"]
 
-    # # Calculate means and variances
-    # hmvds = calc_ds_mean_and_var(hbiginds, dims=["year","member"])
-    # fmvds = calc_ds_mean_and_var(fbiginds, dims=["year","member"])
+    # ====================== Write output
+    # Output folder for that calendar
+    outfolder = baseoutfolder + "/" + calname + "/" 
 
-    # print("Performing t-tests...")
-    # # Differences compared to historical, with t-test pvalues
-    # deltattests = pooled_stats.calc_diff_ttest_generic(fmvds, hmvds, hmvds.attrs["nobs_var"])
+    # Create output folder
+    os.makedirs(outfolder, exist_ok=True)
 
-    # # Just the p-values of climate variables t-tests
-    # deltapvals = deltattests[[i for i in deltattests.data_vars if re.match(".*_pval",i)] ]
-
-    # # Differences from historical for climate variables only
-    # deltaclim = pooled_stats.addsub_ds_variances(fmvds,hmvds, "sub")
-
-    # print("Applying statistical models...")
-    # # Read model coefficients from R (using rpy2) and convert them 
-    # # to a Dataset with variables renamed and variances added
-    # modelds = read_R_model_dataset(modelsfname, modelname, modelvardict)
-    # # modelds = read_R_model_dataset(modelsfname, "fit.anom.gddeddvpd.prec2", modelvardict)
-
-    # # Apply a single model without calculating variances
-    # estdelta = apply_model_novar(deltaclim,modelds)
-    # estdelta.name = "agestimate"
-    # estdelta = estdelta.assign_coords({"statmodel" : modelstring}).expand_dims("statmodel")
-
-    # # Append ag model estimates
-    # deltaclim = deltaclim.merge(estdelta)
-
-    # # Append climate t-test p-values
-    # deltaclim = deltaclim.merge(deltapvals)
-
-    # # Add metadata for some variables
-    # deltaclim = add_meta_dict(deltaclim, metadict)
-    # deltaclim["agestimate"].attrs["long_name"] = cropstr + " " + deltaclim["agestimate"].attrs["long_name"]
-
-    # # Output folder for that calendar
-    # outfolder = baseoutfolder + "/" + calname + "/" 
-
-    # # Create output folder
-    # os.makedirs(outfolder, exist_ok=True)
-
-    # # Main output file name
-    # # outfname = outfolder + crop + ".allscens.estimated.nc"
-    # outfname = outfolder + crop + outfnamesuf
+    # Main output file name
+    # outfname = outfolder + crop + ".allscens.estimated.nc"
+    outfname = outfolder + crop + outfnamesuf
      
-    # print("Writing output file...")
-    # # Write output
-    # deltaclim.to_netcdf(outfname)
+    print("Writing output file...")
+    # Write output
+    deltattests.to_netcdf(outfname)
 
 #%%
