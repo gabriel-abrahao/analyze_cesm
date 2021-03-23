@@ -19,6 +19,7 @@ import datetime
 import numba
 from numba import jit,prange
 import rpy2.robjects
+import sys
 
 sys.path.append("../")
 import pooled_stats 
@@ -423,6 +424,12 @@ for crop in crops:
         hbigestds = hbigestds.merge(apply_model_level_novar(hbiginds, modelds))
         fbigestds = fbigestds.merge(apply_model_level_novar(fbiginds, modelds))
 
+    # Ensemble statmodel
+    hbigestds = xr.merge([hbigestds,\
+        hbigestds["agestimate"].mean("statmodel").assign_coords({"statmodel" : "Ensemble"}).expand_dims("statmodel")])
+    fbigestds = xr.merge([fbigestds,\
+        fbigestds["agestimate"].mean("statmodel").assign_coords({"statmodel" : "Ensemble"}).expand_dims("statmodel")])
+        
 
     # ======================= Calculate means and variances
     hmvds = calc_ds_mean_and_var(hbigestds, dims=["year","member"])
