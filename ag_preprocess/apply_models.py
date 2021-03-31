@@ -23,6 +23,7 @@ import sys
 
 sys.path.append("../")
 import pooled_stats 
+import bootstrap_utils 
 # %% [markdown]
 # ### Setup
 
@@ -51,8 +52,23 @@ basecalfolder = baseinfolder + calname + "/"
 # scens       =   next(os.walk(basecalfolder))[1]
 
 # Default behavior is future scenarios minus historical
-# Set ifutdelta to True for difference within scenarios
-ifutdelta   =   True
+# Set ifutdelta to True for difference within scenarios,
+# and False to enable trends (see below)
+# ifutdelta   =   True
+ifutdelta   =   False
+
+# Whether to calculate future trends relative to historical
+# WARNING: The implementation of trends can be quite slow, 
+# so don't run this if you don't need it. Takes around 20s per variable.
+# Time is not strongly dependent on nsamp (tested up to 100) since
+# the bottlenecks are in the Dataframe manipulations used and
+# the actual bootstrap in implemented in numba
+if not ifutdelta:
+    itrend      =   True
+    tsyear      =   2012
+    teyear      =   2050
+    nsamp       =   500
+    trendvarnames = ["tempmean","tmaxmean","tminmean","precmean","vpdmean","edd","gdd","agestimate"]
 
 fscens      =   ["rcp8.5_seg", "rcp8.5_weg", "rcp8.5_cmp", "rcp2.6_seg", "rcp2.6_weg", "rcp2.6_cmp"]
 hscen       =   "historical"
@@ -126,12 +142,14 @@ outfnamesuf = ".allscens.estimated.nc"
 if ifutdelta:
     outfnamesuf = ".futdelta." + str(hsyear) + str(heyear) + "-" + str(fsyear) + str(feyear) + ".allscens.estimated.nc"
 
-# Dirty override of the scenario counter, can be used to restart runs
-ioverscen = False
-# ioverscen = True
-overscenindex = 2
-if ioverscen:
-    print("====================================================\n===== WARNING: Skipping to scenario index " + str(overscenindex) + " ========\n====================================================")
+if itrend:
+    trendfnamesuf = ".trend." + str(tsyear) + "-" + str(teyear) +".allscens.estimated.nc"
+
+# Also write level datasets?
+iwritelevels = True
+if iwritelevels:
+    flevelsuf = ".levels.period." + str(fsyear) + "_" + str(feyear) + ".estimated.nc"
+    hlevelsuf = ".levels.period." + str(hsyear) + "_" + str(heyear) + ".estimated.nc"
 
 #%% Function definitions    ===========================================================================================================================================
 # ====================================================================================================================================================================
@@ -320,7 +338,7 @@ def calc_diff_ttest_withperc(dsboth1, dsboth2, nobs, percnames):
 
     diff = dsmeans1 - dsmeans2
 
-    diffperc = (dsmeans1[percnames] - dsmeans2[percnames])/dsmeans2[percnames]
+    diffperc = 100.0*(dsmeans1[percnames] - dsmeans2[percnames])/dsmeans2[percnames]
     diffperc = diffperc.rename({i:(i + "_perc") for i in diffperc.data_vars})
 
     # t-test
@@ -382,6 +400,15 @@ for crop in crops:
     print(crop)
     cropstr = cropstrdict[crop]
     modelsfname = modelsfnamesdict[crop]
+
+    # ====================== Creating output folder
+    # Output folder for that calendar
+    outfolder = baseoutfolder + "/" + calname + "/" 
+
+    # Create output folder
+    os.makedirs(outfolder, exist_ok=True)
+
+    # ====================== Opening climate scenarios
     print("Opening climate scenarios...")
     # Open all future and historical data in separate big datasets
     # listallds = [[dataset_open_ens_folder(basecalfolder, enscode, scen, crop) for scen in allscens] for enscode in enscodes]
@@ -394,6 +421,10 @@ for crop in crops:
         hlistallds = [[dataset_open_ens_folder(basecalfolder, enscode, scen, crop) for scen in [hscen]] for enscode in enscodes]
         hbiginds = xr.combine_nested(hlistallds, concat_dim=["member","scenario"])
 
+    # If we are calculating trends, keep a different subset of fbiginds
+    if itrend:
+        tbiginds = fbiginds.sel(scenario = fscens, year = slice(tsyear,teyear))
+
     # Selecting years    
     fbiginds = fbiginds.sel(scenario = fscens, year = slice(fsyear,feyear))
 
@@ -405,14 +436,23 @@ for crop in crops:
     # Calculating squared precmean
     hbiginds["precmean2"] = hbiginds["precmean"]**2
     fbiginds["precmean2"] = fbiginds["precmean"]**2
+    if itrend:
+        tbiginds["precmean2"] = tbiginds["precmean"]**2
 
-    # Calculate GDD and EDD (levels)
+    # Calculate GDD and EDD (levels) and drop the tempgdds variable
     hbiginds = calc_gdd_edd(hbiginds, basevalgdd, basevaledd)
     fbiginds = calc_gdd_edd(fbiginds, basevalgdd, basevaledd)
+    hbiginds = hbiginds.drop("tempgdds")
+    fbiginds = fbiginds.drop("tempgdds")
+    if itrend:
+        tbiginds = calc_gdd_edd(tbiginds, basevalgdd, basevaledd)
+        tbiginds = tbiginds.drop("tempgdds")
 
     # ======================= Applying stat models
     hbigestds = hbiginds
     fbigestds = fbiginds
+    if itrend:
+        tbigestds = tbiginds
 
     for modelname in modelnames:
         modelstring = modelstringsdict[modelname]    
@@ -423,13 +463,43 @@ for crop in crops:
         # Apply model and get levels
         hbigestds = hbigestds.merge(apply_model_level_novar(hbiginds, modelds))
         fbigestds = fbigestds.merge(apply_model_level_novar(fbiginds, modelds))
+        if itrend:
+            tbigestds = tbigestds.merge(apply_model_level_novar(tbiginds, modelds))
 
     # Ensemble statmodel
     hbigestds = xr.merge([hbigestds,\
         hbigestds["agestimate"].mean("statmodel").assign_coords({"statmodel" : "Ensemble"}).expand_dims("statmodel")])
     fbigestds = xr.merge([fbigestds,\
         fbigestds["agestimate"].mean("statmodel").assign_coords({"statmodel" : "Ensemble"}).expand_dims("statmodel")])
-        
+    if itrend:
+            tbigestds = xr.merge([tbigestds,\
+        tbigestds["agestimate"].mean("statmodel").assign_coords({"statmodel" : "Ensemble"}).expand_dims("statmodel")])
+
+    if iwritelevels:
+        # ======================= Writing level output
+        hbigestds.to_netcdf(outfolder + crop + hlevelsuf)
+        fbigestds.to_netcdf(outfolder + crop + flevelsuf)
+
+    # ====================== Trend calculation
+    if itrend:
+        print("Applying trends, this can take a while...")
+        trends = bootstrap_utils.ds_apply_reg_bootstrap(tbigestds[trendvarnames], "year", nsamp = nsamp)
+
+        # Get historical average agestimate to calculate percentages
+        baseestimate = hbigestds["agestimate"].drop("scenario").mean("year")
+        trends["agestimate_perc"] = trends["agestimate"]*(1.0/baseestimate)
+        trends["agestimate_perc_var"] = trends["agestimate_var"]*(1.0/baseestimate)**2
+
+        trends.attrs["nyears"] = (teyear - tsyear + 1)
+        trends.attrs["bootstrap_nsamp"] = nsamp
+        trends.attrs["perc_base_syear"] = hsyear
+        trends.attrs["perc_base_eyear"] = heyear
+        trends["agestimate_perc"].attrs["perc_base_syear"] = hsyear
+        trends["agestimate_perc"].attrs["perc_base_eyear"] = heyear
+
+
+        # trends["agestim"]
+        trends.to_netcdf(outfolder + crop + trendfnamesuf)
 
     # ======================= Calculate means and variances
     hmvds = calc_ds_mean_and_var(hbigestds, dims=["year","member"])
@@ -445,13 +515,6 @@ for crop in crops:
     deltattests = add_meta_dict(deltattests, metadict)
     deltattests["agestimate"].attrs["long_name"] = cropstr + " " + deltattests["agestimate"].attrs["long_name"]
     deltattests["agestimate_perc"].attrs["long_name"] = cropstr + " " + deltattests["agestimate_perc"].attrs["long_name"]
-
-    # ====================== Write output
-    # Output folder for that calendar
-    outfolder = baseoutfolder + "/" + calname + "/" 
-
-    # Create output folder
-    os.makedirs(outfolder, exist_ok=True)
 
     # Main output file name
     # outfname = outfolder + crop + ".allscens.estimated.nc"
