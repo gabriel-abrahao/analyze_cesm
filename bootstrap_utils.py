@@ -151,29 +151,53 @@ def ds_apply_reg_bootstrap(inputds, timevarname, nsamp = 30):
     if isinstance(inputds, xr.DataArray):
         inputds = inputds.to_dataset()
 
-    orig_coords = list(inputds.coords)
-    group_coords = [i for i in orig_coords if i != timevarname]
     regvarnames = list(inputds.data_vars)
 
-    inputdf = inputds.to_dataframe()
+    # Calculating one variable at a time and concatenating
+    # the results saves a lot of memory on Pandas Dataframe wrangling
+    # It also allows Dataarrays with different dimensions
+    bigoutds = xr.Dataset()
+    for regvarname in regvarnames:
+        vards = inputds[[regvarname]]
+        orig_coords = list(vards.coords)
+        group_coords = [i for i in orig_coords if i != timevarname]
+        
+        inputdf = vards.to_dataframe()
+        bootregdf = df_apply_reg_bootstrap(inputdf, timevarname, [regvarname], group_coords, nsamp = nsamp)
+        outds = xr.Dataset.from_dataframe(bootregdf)
+        bigoutds = bigoutds.merge(outds)
+    
+    # inputdf = inputds.to_dataframe()
+    # bootregdf = df_apply_reg_bootstrap(inputdf, timevarname, regvarnames, group_coords, nsamp = nsamp)
+    # outds = xr.Dataset.from_dataframe(bootregdf)
 
-    bootregdf = df_apply_reg_bootstrap(inputdf, timevarname, regvarnames, group_coords, nsamp = nsamp)
-
-    outds = xr.Dataset.from_dataframe(bootregdf)
-
-    return(outds)
+    return(bigoutds)
 
 
-# bigds = xr.open_dataset("tests/poi.nc")
-# inputds = bigds[["tempmean","vpdmean"]].isel(scenario=[1,3], member=0)
+# # bigds = xr.open_dataset("tests/poi.nc")
+# bigds = xr.open_dataset("tests/trend_test.nc")
+# inputds = bigds[["tempmean","agestimate"]].isel(scenario=[1,3], member=0)
+# # inputds = bigds[["tempmean","vpdmean"]].isel(scenario=[1,3], member=0)
+# # testds = bigds[["tempmean"]]
+# # # testds = bigds[["tempmean","vpdmean"]]
 
-# # inputds = testds
+# # # # inputds = testds
 # timevarname = "year"
-# nsamp = 10
-# outds = ds_apply_reg_bootstrap(inputds, timevarname, nsamp)
+# nsamp = 100
+# # # outds = ds_apply_reg_bootstrap(inputds, timevarname, nsamp)
+# # testoutds = ds_apply_reg_bootstrap(testds, timevarname, nsamp)
 
-# outds["tempmean"].plot(row="scenario")
+# testoutds = ds_apply_reg_bootstrap(inputds, timevarname, nsamp)
+# # testoutds = ds_apply_reg_bootstrap(bigds, timevarname, nsamp)
 
-# inputds.polyfit(dim = "year", deg =1)["tempmean_polyfit_coefficients"].sel(degree=1).plot(row="scenario")
+# # %timeit -n 1 -r 1 testoutds = ds_apply_reg_bootstrap(inputds, timevarname, nsamp)
+# # # %timeit -n 1 -r 1 testoutds = ds_apply_reg_bootstrap(testds, timevarname, nsamp)
+# # # %timeit -n 1 -r 1 testoutds = ds_apply_reg_bootstrap(testds, timevarname, nsamp)
 
-# %%
+# # # outds["tempmean"].plot(row="scenario")
+
+# testoutds["agestimate"].plot(col="scenario",row = "statmodel")
+
+# # inputds.polyfit(dim = "year", deg =1)["tempmean_polyfit_coefficients"].sel(degree=1).plot(row="scenario")
+
+# # %%
