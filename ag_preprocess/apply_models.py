@@ -233,7 +233,7 @@ def meta_open_dataset(fname,scen,enscode):
 def dataset_open_ens_folder(basecalfolder, enscode, scen, crop):
     ensfolder = basecalfolder + scen + "_" + enscode + "/"
     listensds = [meta_open_dataset(fname,scen,enscode) for fname in glob.glob(ensfolder + "/" + crop + ".*.nc")]
-    ensds = xr.combine_nested(listensds, concat_dim=["year"])
+    ensds = xr.combine_nested(listensds, concat_dim=["year"], combine_attrs="override")
     ensds = ensds.sortby("year")
     return(ensds)
 
@@ -487,8 +487,8 @@ for crop in crops:
 
         # Get historical average agestimate to calculate percentages
         baseestimate = hbigestds["agestimate"].drop("scenario").mean("year")
-        trends["agestimate_perc"] = trends["agestimate"]*(1.0/baseestimate)
-        trends["agestimate_perc_var"] = trends["agestimate_var"]*(1.0/baseestimate)**2
+        trends["agestimate_perc"] = trends["agestimate"]*(100.0/baseestimate)
+        trends["agestimate_perc_var"] = trends["agestimate_var"]*(100.0/baseestimate)**2
 
         trends.attrs["nyears"] = (teyear - tsyear + 1)
         trends.attrs["bootstrap_nsamp"] = nsamp
@@ -496,6 +496,7 @@ for crop in crops:
         trends.attrs["perc_base_eyear"] = heyear
         trends["agestimate_perc"].attrs["perc_base_syear"] = hsyear
         trends["agestimate_perc"].attrs["perc_base_eyear"] = heyear
+        trends["agestimate_perc"].attrs["units"] = "% year-1"
 
 
         # trends["agestim"]
