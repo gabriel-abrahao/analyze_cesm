@@ -65,7 +65,7 @@ ifutdelta   =   False
 # the actual bootstrap in implemented in numba
 if not ifutdelta:
     itrend      =   True
-    tsyear      =   2012
+    tsyear      =   2005
     teyear      =   2050
     nsamp       =   500
     trendvarnames = ["tempmean","tmaxmean","tminmean","precmean","vpdmean","edd","gdd","agestimate"]
@@ -378,6 +378,29 @@ def calc_diff_ttest_withperc(dsboth1, dsboth2, nobs, percnames):
     # (diff,dump) = xr.broadcast(diff, dsboth1)
     return(diff)
 
+# Combines means and variances of member in a Dataset
+# ndeg is the number of degrees of freedom used to calculate 
+# those statistics, without the (-1) correction
+# So, if those are directly observed variables on time, ndeg = nyears
+# But for trends we must discount the 2 parameters estimated
+def ensemble_stats_from_stats(inds, ndeg):
+    # Split the dataset
+    (dsmeans, dsvars) = pooled_stats.split_dataset_variances_generic(inds)
+
+    # Aggregate means by taking a simple mean
+    dsmean = dsmeans.mean(dim = "member", keep_attrs = True)
+
+    # Aggregate variances by applying pool_variances_dask
+    dsvariance = xr.apply_ufunc(pooled_stats.pool_variances_dask, dsmeans, dsvars, ndeg, \
+        dask = "parallelized", input_core_dims=[["member"], ["member"], [] ],
+        keep_attrs=True)
+
+    # Join variance variables into dsmean
+    dsvariance = dsvariance.rename({i:(i + "_var") for i in dsvariance.data_vars})
+    dsmean = dsmean.merge(dsvariance)
+
+    return(dsmean)
+
 #%%  MAIN SCRIPT ===========================================================================================================================================
 # ====================================================================================================================================================================
 
@@ -490,16 +513,25 @@ for crop in crops:
         trends["agestimate_perc"] = trends["agestimate"]*(100.0/baseestimate)
         trends["agestimate_perc_var"] = trends["agestimate_var"]*(100.0/baseestimate)**2
 
+        # Aggregate ensemble member statistics
+        nyears = (teyear - tsyear + 1)
+        ndeg = nyears - 2 # Trend parameters estimated
+        trends = ensemble_stats_from_stats(trends, ndeg)
+        
+        
         trends.attrs["nyears"] = (teyear - tsyear + 1)
         trends.attrs["bootstrap_nsamp"] = nsamp
         trends.attrs["perc_base_syear"] = hsyear
         trends.attrs["perc_base_eyear"] = heyear
         trends["agestimate_perc"].attrs["perc_base_syear"] = hsyear
         trends["agestimate_perc"].attrs["perc_base_eyear"] = heyear
+        
+        trends["agestimate"].attrs["long_name"] = metadict["agestimate"]["long_name"]
+        trends["agestimate_perc"].attrs["long_name"] = cropstr + " yield trend"
+
         trends["agestimate_perc"].attrs["units"] = "% year-1"
 
-
-        # trends["agestim"]
+        # Write trends output
         trends.to_netcdf(outfolder + crop + trendfnamesuf)
 
     # ======================= Calculate means and variances
