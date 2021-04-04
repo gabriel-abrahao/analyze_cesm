@@ -9,6 +9,7 @@ from datetime import datetime
 import xarray as xr
 import numpy as np
 import pandas as pd
+import shapefile
 from scipy.stats import ttest_ind_from_stats
 import sys
 
@@ -19,6 +20,7 @@ import plotnine as p9
 
 sys.path.append("../")
 import pooled_stats 
+import geo_utils
 
 #%%
 # REMEMBER PATHS ARE RELATIVE TO THE SCRIPT FOLDER!
@@ -65,6 +67,12 @@ if idefplots:
     defpfts = [14, 15, 16]
     # defpfts = [12, 13, 14, 15, 16] # This includes C3 grasses
 
+# Read biome raster and shape?
+ireadbio       =    True
+iplotbio       =    True
+iaddsumdef     =    True
+biorastfname   =    "../auxdata/bioma.nc"
+bioshpfname    =    "../auxdata/biomas_WGS84_simp.shp"
 
 # Read regions? We have to if we want to make all deforestation plots
 ireadregions = True
@@ -72,10 +80,15 @@ regfname =      "../regions/states_grid.nc"
 regcodesfname = "../regions/states_codes.csv"
 useregs = ["AM","PA","MT","MA","TO","PI"]
 
+# Read agricultural observed data
+ireadag         = True
+agfname         = "../regions/agdata.nc"
+agyear          = 2016
+
 # Contour variable
-contvarname = "tempmean"
+# contvarname = "tempmean"
 # contvarname = "agestimate"
-# contvarname = "agestimate_perc"
+contvarname = "agestimate_perc"
 
 # Select this model TODO: change the structure to support multi-model plots
 usemodelstr = "GDD + EDD"
@@ -107,7 +120,8 @@ domain = "BR" # Zoom in Brazil
 plotfname =     "../output_plots/ag_new/" + "/" + contvarname + "/" + "trend_" + "deltahist_" + usemodelstr + "_" + str(fsyear) + "_" + str(feyear) + "_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) 
 efplotfname =   "../output_plots/ag_new/" + "/" + contvarname + "/" + "trend_" + "effects_" + usemodelstr + "_" + str(fsyear) + "_" + str(feyear) + "_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) 
 
-defplotfname =   "../output_plots/ag_new/" + "/" + "deforestation" + "/" + "trend_" + "effects_" + str(fsyear) + "_" + str(feyear) + "_" + domain
+defplotfname =   "../output_plots/ag_new/" + "/" + "deforestation" + "/" + "defdiff_trend_" + "effects_" + str(fsyear) + "_" + str(feyear) + "_" + domain
+deflevplotfname =   "../output_plots/ag_new/" + "/" + "deforestation" + "/" + "deflev_trend_" + "effects_" + str(fsyear) + "_" + str(feyear) + "_" + domain
 
 wks_type = "png"
 
@@ -477,9 +491,35 @@ def reset_coord_resources_ref(res, ds):
     res.vfYArray               = ds["lat"].values
     return(res)
 
+# Drop unused vars with suffixes
+def drop_unused(ds):
+    varnames = ds.data_vars
+    varnames = filter_suf_str(varnames, "_pval", keep="out")
+    varnames = filter_suf_str(varnames, "_var", keep="out")
+    outds = ds[varnames]
+    return(outds)
 
-# def lintrans_means_ds(ds, factor)
+def read_shapefile(shpfname,**kwargs):
+    """
+    Read a shapefile into a Pandas dataframe with a 'coords' 
+    column holding the geometry information. This uses the pyshp
+    package
+    """
+    sf_shape = shapefile.Reader(bioshpfname, **kwargs)
 
+    fields = [x[0] for x in sf_shape.fields][1:]
+    records = [y[:] for y in sf_shape.records()]
+    #records = sf_shape.records()
+    shps = [s.points for s in sf_shape.shapes()]
+    df = pd.DataFrame(columns=fields, data=records)
+    df = df.assign(coords=shps)
+    return df
+
+def add_shapefile_df_polygons(wks,plotobj,shp,res=None):
+    # tcoords = next(iter(shp["coords"]))
+    for tcoords in shp["coords"]:
+        (tx, ty) = tuple(zip(*tcoords))
+        Ngl.add_polygon(wks, plotobj,tx,ty,res)
 
 #%%
 # ============================================= BEGIN READING FILES
@@ -589,7 +629,40 @@ if ireadregions:
 regcodes = pd.read_csv(regcodesfname).set_index("code").T.to_dict("list")
 regcodes = {i:regcodes[i][0] for i in regcodes.keys()}
 
-# %% ===================== BEGIN PLOTS ==============================================
+#%% Read agricultural data if asked
+if ireadag:
+    agdsin = xr.open_dataset(agfname).interp_like(deltads)
+
+#%% Read biome information
+if ireadbio:
+    biorast = xr.open_dataarray(biorastfname).interp_like(deltads, method="nearest")
+    biorast = biorast.squeeze("time",drop=True)
+    biorast = biorast.where(biorast != 0).rename("biome")
+
+    bioshp = read_shapefile(bioshpfname)
+    bioshp = bioshp.loc[bioshp["biomestr"].isin(["AMAZ","CERR"])]
+
+    if iplotbio:
+        biores = Ngl.Resources()
+        biores.gsFillOpacityF = 0.0
+        biores.gsEdgesOn = True
+        biores.gsEdgeColor = "darkgreen"
+        biores.gsEdgeThicknessF = 5.0
+
+    # Summarize deforestation data by biome
+    sumdeflev = xr.merge([defarr,biorast])
+    # sumdeflev = sumdeflev.weighted(geo_utils.get_pixel_areas(sumdeflev)) # Open issue #3937 on xarray 0.16.2: no GroupBy weights
+    sumdeflev = sumdeflev.groupby("biome").mean().to_dataframe()
+    sumdeflev = bioshp.drop("coords",axis=1).rename(columns={"CD_Bioma" : "biome"}).merge(sumdeflev.reset_index(), on="biome")
+
+    sumdefdiff = xr.merge([cmpdefdelta,biorast])
+    sumdefdiff = sumdefdiff.groupby("biome").mean().to_dataframe()
+    sumdefdiff = bioshp.drop("coords",axis=1).rename(columns={"CD_Bioma" : "biome"}).merge(sumdefdiff.reset_index(), on="biome")
+
+
+# %% ===================== LEVEL PLOTS ===================================================================
+#    =======================================================================================================
+#    =======================================================================================================
 slabelstring = deltads[contvarname].attrs["long_name"] + \
     " (" + deltads[contvarname].attrs["units"] + ") ~C~" + futtimestr + " relative to " + histimestr + ""
 
@@ -809,7 +882,7 @@ Ngl.panel(wks,efplots,[2,len(scenarios)/2],efpanelres)
 
 Ngl.delete_wks(wks)
 
-#%% ==== DEFORESTATION PLOTS ================================================
+#%% ==== DEFORESTATION CMIP DIFFERENCE PLOTS ================================================
 if idefplots:
     wksres = Ngl.Resources()
     wksres.wkHeight = 2048
@@ -825,7 +898,7 @@ if idefplots:
     deforres.cnLineLabelsOn         = False
     deforres.cnFillMode             = "RasterFill"
 
-    deforlabelstring = "Difference in "+str(defrefyear)+"-"+str(defpyear)+" deforestation from RCP"
+    deforlabelstring = "Difference in "+str(defrefyear)+"-"+str(defpyear)+" natural vegetation loss from RCP (p.p.)"
 
     deforres.lbLabelBarOn           = False
     # deforres.lbLabelBarOn           = True
@@ -859,6 +932,21 @@ if idefplots:
         dssubset = dssubset.where(np.abs(dssubset) > 1e-12) # A low threshold to eliminate off-country values
         defplot = Ngl.contour_map(wks,dssubset.to_masked_array(),deforres)
 
+        if iplotbio:
+            add_shapefile_df_polygons(wks,defplot,bioshp, biores)
+
+            if iaddsumdef:
+                restext = Ngl.Resources()
+                restext.txFontHeightF = 0.025
+                textx = 322.5
+                texty = -28
+
+                defdict = sumdefdiff.query("scenario==@scen").set_index("biomestr").to_dict()["DiffDef"]
+                textstr = "~C~".join("{} : {:.2f}".format(k, v) for k, v in defdict.items())
+                
+                Ngl.add_text(wks,defplot,textstr,textx,texty, restext)
+
+
         defplots.append(defplot)
         deffigstrs.append(str(scen))
 
@@ -884,3 +972,158 @@ if idefplots:
 
     Ngl.delete_wks(wks)
 
+#%% ==== DEFORESTATION TIME DIFFERENCE PLOTS ================================================
+if idefplots:
+    wksres = Ngl.Resources()
+    wksres.wkHeight = 2048
+    wksres.wkWidth = 2048
+    wks = Ngl.open_wks(wks_type,deflevplotfname,wksres)  # Open a workstation.
+    os.makedirs(os.path.dirname(deflevplotfname), exist_ok=True)
+
+    deflevres = set_common_resources()
+    deflevres = reset_coord_resources_ref(deflevres, cmpdefdelta)
+
+    deflevres.cnFillOn               = True
+    deflevres.cnLinesOn              = False
+    deflevres.cnLineLabelsOn         = False
+    deflevres.cnFillMode             = "RasterFill"
+
+    deflevlabelstring = "Natural vegetation loss between "+str(defrefyear)+" and "+str(defpyear)+" (p.p.)"
+
+    deflevres.lbLabelBarOn           = False
+    # deflevres.lbLabelBarOn           = True
+    deflevres.lbOrientation          = "horizontal"
+    deflevres.lbTitleString          = deflevlabelstring
+
+    # deforcolormap = Ngl.read_colormap_file("WhiteYellowOrangeRed")
+    # deforcolormap = deforcolormap[::-1]
+
+    # deforcolormap = Ngl.read_colormap_file("OceanLakeLandSnow")
+    # deforcolormap = deforcolormap[65:-24]
+    # deforcolormap[0] = [1,1,1,1]
+    # deflevres.cnFillPalette           =   deforcolormap
+    # deflevres.cnLevels    =   np.append(np.array([5]),np.arange(10,70.1,10))
+    
+    # deflevres.cnLevelSelectionMode    =   "AutomaticLevels"
+    deflevres.cnLevelSelectionMode    =   "ExplicitLevels"
+    
+    deforcolormap = Ngl.read_colormap_file("MPL_BrBG")[::-1]
+    deflevres.cnFillPalette           =   deforcolormap
+    deflevres.cnLevels    =   np.array([ -50, -40, -30, -20, -10, -5, 0, 5, 10, 20, 30, 40, 50])
+
+    deflevplots = []
+    deflevfigstrs = []
+    scenarios = defarr.scenario.values.tolist()
+    # for scen in scenarios:
+    #     for usemon in usemons:
+    for scen in scenarios:
+        # contres.tiMainString = usemon
+        dssubset = defarr.sel(scenario = scen)
+        dssubset = dssubset.where(np.abs(dssubset) > 1e-12) # A low threshold to eliminate off-country values
+        deflevplot = Ngl.contour_map(wks,dssubset.to_masked_array(),deflevres)
+
+        if iplotbio:
+            add_shapefile_df_polygons(wks,deflevplot,bioshp, biores)
+
+            if iaddsumdef:
+                restext = Ngl.Resources()
+                restext.txFontHeightF = 0.03
+                textx = 321.5
+                texty = -27
+
+                defdict = sumdeflev.query("scenario==@scen").set_index("biomestr").to_dict()[pftvarname]
+                textstr = "~C~".join("{} : {:.2f}".format(k, v) for k, v in defdict.items())
+                
+                Ngl.add_text(wks,deflevplot,textstr,textx,texty, restext)
+
+        deflevplots.append(deflevplot)
+        deflevfigstrs.append(str(scen))
+
+    defpanelres                                  = Ngl.Resources()
+    defpanelres.nglPanelFigureStrings            = deflevfigstrs
+    defpanelres.nglPanelFigureStringsFontHeightF = 0.01
+    defpanelres.nglPanelLabelBar                 = True     # Turn on panel labelbar
+    defpanelres.nglPanelLabelBarLabelFontHeightF = 0.01    # Labelbar font height
+    defpanelres.nglPanelLabelBarHeightF          = 0.03   # Height of labelbar
+
+    defpanelres.nglPanelBottom                   = 0.05
+
+    defpanelres.lbTitleString                    =   deflevlabelstring
+    defpanelres.lbTitlePosition                  =   "Bottom"
+    defpanelres.lbTitleFontHeightF               =   0.01
+    defpanelres.lbJustification                  = "TopCenter"
+
+
+    Ngl.panel(wks,deflevplots,[2,len(scenarios)/2],defpanelres)
+
+    # print(Ngl.retrieve_colormap(wks))
+    # print(Ngl.read_colormap_file("BlueWhiteOrangeRed"))
+
+    Ngl.delete_wks(wks)
+
+#%% ==============================TABULAR=============================
+# Merge all level datasets
+dsall = drop_unused(deltads).merge(defarr)
+dsall = dsall.merge(agdsin.sel(year=agyear, drop=True))
+dsall = dsall.merge(regions)
+
+# Convert to DataFrame
+dfall = dsall.to_dataframe().dropna(how="all").reset_index()
+dfall = dfall.replace({"region":regcodes})
+
+#%% Uniform colors and shapes
+statmodel_properties = {
+    'Ensemble' : ("black", "|"), 
+    'GDD + EDD' : ("red", "."), 
+    'GDD + EDD + VPD' : ("orange", "."),
+    'GDD + EDD + VPD + Prec' : ("purple", "."), 
+    'VPD' : ("blue", ".")
+}
+statmodel_colors = {i:statmodel_properties[i][0] for i in statmodel_properties.keys()}
+statmodel_shapes = {i:statmodel_properties[i][1] for i in statmodel_properties.keys()}
+#%%
+dumdf = dfall.groupby(["region","statmodel","scenario"]).apply(lambda dfx: (dfx[contvarname] * dfx["sharea"]).sum() / dfx["sharea"].sum())
+dumdf = pd.DataFrame(dumdf.rename("agestimate_perc"))#.reset_index()
+dumdf.query("statmodel=='Ensemble'").reset_index("scenario").pivot(columns="scenario")
+
+(
+    p9.ggplot(dumdf.dropna().reset_index()) +
+    p9.geom_point(p9.aes(x = "agestimate_perc", y = "scenario", 
+        color = "statmodel", shape = "statmodel"), size = 2) +
+    p9.facet_wrap("region") +
+    p9.scale_color_manual(statmodel_colors) +
+    p9.scale_shape_manual(statmodel_shapes) +
+    p9.labs(color="Yield model", shape="Yield model") +
+    p9.ylab("") + p9.xlab(cropstrdict[crop]+" average yield change (%, production weighted)") +
+    p9.theme_classic()
+)
+#%%
+dumdf = dfall.groupby(["scenario","statmodel"]).apply(lambda dfx: (dfx[contvarname] * dfx["sharea"]).sum() / dfx["sharea"].sum())
+dumdf = pd.DataFrame(dumdf.rename("agestimate_perc"))
+print(dumdf.query("statmodel == 'Ensemble'"))
+(
+    p9.ggplot(dumdf.dropna().reset_index()) +
+    p9.geom_point(p9.aes(x = "agestimate_perc", y = "scenario",
+        color = "statmodel", shape = "statmodel"), size = 10) +
+    p9.scale_color_manual(statmodel_colors) +
+    p9.scale_shape_manual(statmodel_shapes) +
+    p9.labs(color="Yield model", shape="Yield model") +
+    p9.ylab("") + p9.xlab(cropstrdict[crop]+" average yield change (%, area weighted)") +
+    p9.theme_classic()
+
+)
+#%%
+dumdf = dfall.groupby(["scenario","statmodel"]).apply(lambda dfx: (dfx[contvarname] * dfx["stprod"]).sum() / dfx["stprod"].sum())
+dumdf = pd.DataFrame(dumdf.rename("agestimate_perc"))
+print(dumdf.query("statmodel == 'Ensemble'"))
+(
+    p9.ggplot(dumdf.dropna().reset_index()) +
+        p9.geom_point(p9.aes(x = "agestimate_perc", y = "scenario",
+        color = "statmodel", shape = "statmodel"), size = 10) +
+    p9.scale_color_manual(statmodel_colors) +
+    p9.scale_shape_manual(statmodel_shapes) +
+    p9.labs(color="Yield model", shape="Yield model") +
+    p9.ylab("") + p9.xlab(cropstrdict[crop]+" average yield change (%, production weighted)") +
+    p9.theme_classic()
+)
+# %%
