@@ -35,7 +35,7 @@ feyear = 2050
 infsuf = ".allscens.estimated.nc"
 
 # Number of years to multiply the trend to
-nyearstrend = 40
+nyearstrend = 39
 
 ifutdelta = False
 
@@ -76,6 +76,7 @@ bioshpfname    =    "../auxdata/biomas_WGS84_simp.shp"
 
 # Read regions? We have to if we want to make all deforestation plots
 ireadregions = True
+regtypestr = "states"
 regfname =      "../regions/states_grid.nc"
 regcodesfname = "../regions/states_codes.csv"
 useregs = ["AM","PA","MT","MA","TO","PI"]
@@ -90,9 +91,14 @@ agyear          = 2016
 # contvarname = "agestimate"
 contvarname = "agestimate_perc"
 
+varshortnamedict = {
+    "agestimate_perc" : "yield",
+    "tempmean" : "daily mean temperature"
+}
+
 # Select this model TODO: change the structure to support multi-model plots
-usemodelstr = "GDD + EDD"
-# usemodelstr = "Ensemble"
+# usemodelstr = "GDD + EDD"
+usemodelstr = "Ensemble"
 
 # String wih the type of overlay, or "none" for no overlay
 overlaytype = "none"
@@ -117,8 +123,10 @@ if len(sigmodes) == 0:
 # domain = "SAMATL" # South america and Atlantic Ocean
 domain = "BR" # Zoom in Brazil
 
-plotfname =     "../output_plots/ag_new/" + "/" + contvarname + "/" + "trend_" + "deltahist_" + usemodelstr + "_" + str(fsyear) + "_" + str(feyear) + "_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) 
-efplotfname =   "../output_plots/ag_new/" + "/" + contvarname + "/" + "trend_" + "effects_" + usemodelstr + "_" + str(fsyear) + "_" + str(feyear) + "_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) 
+varfolder = "../output_plots/ag_new/" + "/" + contvarname 
+
+plotfname =     varfolder + "/" + "trend_" + "deltahist_" + usemodelstr + "_" + str(fsyear) + "_" + str(feyear) + "_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) 
+efplotfname =   varfolder + "/" + "trend_" + "effects_" + usemodelstr + "_" + str(fsyear) + "_" + str(feyear) + "_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) 
 
 defplotfname =   "../output_plots/ag_new/" + "/" + "deforestation" + "/" + "defdiff_trend_" + "effects_" + str(fsyear) + "_" + str(feyear) + "_" + domain
 deflevplotfname =   "../output_plots/ag_new/" + "/" + "deforestation" + "/" + "deflev_trend_" + "effects_" + str(fsyear) + "_" + str(feyear) + "_" + domain
@@ -1081,12 +1089,12 @@ statmodel_properties = {
 }
 statmodel_colors = {i:statmodel_properties[i][0] for i in statmodel_properties.keys()}
 statmodel_shapes = {i:statmodel_properties[i][1] for i in statmodel_properties.keys()}
-#%%
+#%% By region, area weights
 dumdf = dfall.groupby(["region","statmodel","scenario"]).apply(lambda dfx: (dfx[contvarname] * dfx["sharea"]).sum() / dfx["sharea"].sum())
 dumdf = pd.DataFrame(dumdf.rename("agestimate_perc"))#.reset_index()
 dumdf.query("statmodel=='Ensemble'").reset_index("scenario").pivot(columns="scenario")
 
-(
+dumplot = (
     p9.ggplot(dumdf.dropna().reset_index()) +
     p9.geom_point(p9.aes(x = "agestimate_perc", y = "scenario", 
         color = "statmodel", shape = "statmodel"), size = 2) +
@@ -1094,36 +1102,42 @@ dumdf.query("statmodel=='Ensemble'").reset_index("scenario").pivot(columns="scen
     p9.scale_color_manual(statmodel_colors) +
     p9.scale_shape_manual(statmodel_shapes) +
     p9.labs(color="Yield model", shape="Yield model") +
-    p9.ylab("") + p9.xlab(cropstrdict[crop]+" average yield change (%, production weighted)") +
+    p9.ylab("") + p9.xlab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change (%, area weighted)") +
     p9.theme_classic()
 )
-#%%
+print(dumplot)
+p9.ggsave(dumplot, varfolder + "/plot_regions_"+regtypestr+"_"+contvarname+"_areaweights")
+#%% Grand average, area weights
 dumdf = dfall.groupby(["scenario","statmodel"]).apply(lambda dfx: (dfx[contvarname] * dfx["sharea"]).sum() / dfx["sharea"].sum())
 dumdf = pd.DataFrame(dumdf.rename("agestimate_perc"))
 print(dumdf.query("statmodel == 'Ensemble'"))
-(
+dumplot = (
     p9.ggplot(dumdf.dropna().reset_index()) +
     p9.geom_point(p9.aes(x = "agestimate_perc", y = "scenario",
         color = "statmodel", shape = "statmodel"), size = 10) +
     p9.scale_color_manual(statmodel_colors) +
     p9.scale_shape_manual(statmodel_shapes) +
     p9.labs(color="Yield model", shape="Yield model") +
-    p9.ylab("") + p9.xlab(cropstrdict[crop]+" average yield change (%, area weighted)") +
+    p9.ylab("") + p9.xlab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change (%, area weighted)") +
     p9.theme_classic()
 
 )
-#%%
+print(dumplot)
+p9.ggsave(dumplot, varfolder + "/plot_aggregated_"+contvarname+"_areaweights")
+#%% Grand average, production weights
 dumdf = dfall.groupby(["scenario","statmodel"]).apply(lambda dfx: (dfx[contvarname] * dfx["stprod"]).sum() / dfx["stprod"].sum())
 dumdf = pd.DataFrame(dumdf.rename("agestimate_perc"))
 print(dumdf.query("statmodel == 'Ensemble'"))
-(
+dumplot = (
     p9.ggplot(dumdf.dropna().reset_index()) +
         p9.geom_point(p9.aes(x = "agestimate_perc", y = "scenario",
         color = "statmodel", shape = "statmodel"), size = 10) +
     p9.scale_color_manual(statmodel_colors) +
     p9.scale_shape_manual(statmodel_shapes) +
     p9.labs(color="Yield model", shape="Yield model") +
-    p9.ylab("") + p9.xlab(cropstrdict[crop]+" average yield change (%, production weighted)") +
+    p9.ylab("") + p9.xlab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change (%, production weighted)") +
     p9.theme_classic()
 )
+print(dumplot)
+p9.ggsave(dumplot, varfolder + "/plot_aggregated_"+contvarname+"_prodweights")
 # %%
