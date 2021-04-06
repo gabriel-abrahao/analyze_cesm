@@ -27,6 +27,7 @@ import geo_utils
 motherfolder = "../"
 
 crop = "single"
+# crop = "maize"
 calname = "Oct15-Mar1_Jan15-Jun15"
 
 baseinfolder = motherfolder + "output_ag/ag_vars/" + calname + "/" # Below here should be scenario folders, and below them the files
@@ -85,11 +86,22 @@ useregs = ["AM","PA","MT","MA","TO","PI"]
 ireadag         = True
 agfname         = "../regions/agdata.nc"
 agyear          = 2016
+if crop == "single":
+    agareavarname = "sharea"
+    agprodvarname = "stprod"
+elif crop == "maize":
+    agareavarname = "m2harea"
+    agprodvarname = "m2tprod"
 
-# Contour variable
+# ====================================== Contour variable
 # contvarname = "tempmean"
 # contvarname = "agestimate"
 contvarname = "agestimate_perc"
+
+if contvarname == "agestimate_perc":
+    iyield = True
+else: 
+    iyield = False
 
 varshortnamedict = {
     "agestimate_perc" : "yield",
@@ -123,7 +135,7 @@ if len(sigmodes) == 0:
 # domain = "SAMATL" # South america and Atlantic Ocean
 domain = "BR" # Zoom in Brazil
 
-varfolder = "../output_plots/ag_new/" + "/" + contvarname 
+varfolder = "../output_plots/ag_new/" + crop + "/" + contvarname 
 
 plotfname =     varfolder + "/" + "trend_" + "deltahist_" + usemodelstr + "_" + str(fsyear) + "_" + str(feyear) + "_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) 
 efplotfname =   varfolder + "/" + "trend_" + "effects_" + usemodelstr + "_" + str(fsyear) + "_" + str(feyear) + "_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) 
@@ -730,8 +742,8 @@ scontres.cnFillMode             = "RasterFill"
 scontres.lbLabelBarOn           = False
 
 scolormap = Ngl.read_colormap_file("BlueWhiteOrangeRed")
-# if idropwhites:
-#     scolormap = scolormap[(scolormap.sum(axis=1) != 4),:]
+if idropwhites:
+    scolormap = scolormap[(scolormap.sum(axis=1) != 4),:]
 if reversedeltacolormap:
     scolormap = scolormap[::-1]
 
@@ -829,6 +841,8 @@ efcontres.mpOutlineBoundarySets = "NoBoundaries"
 
 scolormap = Ngl.read_colormap_file("BlueWhiteOrangeRed")
 
+if idropwhites:
+    scolormap = scolormap[(scolormap.sum(axis=1) != 4),:]
 if reversedeltacolormap:
     scolormap = scolormap[::-1]
 
@@ -1080,8 +1094,9 @@ dfall = dsall.to_dataframe().dropna(how="all").reset_index()
 dfall = dfall.replace({"region":regcodes})
 
 #%% Uniform colors and shapes
+centralshape = "d"
 statmodel_properties = {
-    'Ensemble' : ("black", "|"), 
+    'Ensemble' : ("black", centralshape), 
     'GDD + EDD' : ("red", "."), 
     'GDD + EDD + VPD' : ("orange", "."),
     'GDD + EDD + VPD + Prec' : ("purple", "."), 
@@ -1090,54 +1105,104 @@ statmodel_properties = {
 statmodel_colors = {i:statmodel_properties[i][0] for i in statmodel_properties.keys()}
 statmodel_shapes = {i:statmodel_properties[i][1] for i in statmodel_properties.keys()}
 #%% By region, area weights
-dumdf = dfall.groupby(["region","statmodel","scenario"]).apply(lambda dfx: (dfx[contvarname] * dfx["sharea"]).sum() / dfx["sharea"].sum())
-dumdf = pd.DataFrame(dumdf.rename("agestimate_perc"))#.reset_index()
-dumdf.query("statmodel=='Ensemble'").reset_index("scenario").pivot(columns="scenario")
+groupvars = ["region","scenario"]
+if iyield: groupvars.extend(["statmodel"])
+
+dumdf = dfall.groupby(groupvars).apply(lambda dfx: (dfx[contvarname] * dfx[agareavarname]).sum() / dfx[agareavarname].sum())
+dumdf = pd.DataFrame(dumdf.rename(contvarname))#.reset_index()
+
+printdf = dumdf
+if iyield: printdf = printdf.query("statmodel=='Ensemble'") 
+printdf.reset_index("scenario").pivot(columns="scenario")
+
+aesdict = {"x" : contvarname, "y" : "scenario"}
+pointkwargs = {"size" : 2}
+if iyield: 
+    aesdict.update({"color" : "statmodel", "shape" : "statmodel"})
+else:
+    pointkwargs.update({"shape" : "d"})
 
 dumplot = (
     p9.ggplot(dumdf.dropna().reset_index()) +
-    p9.geom_point(p9.aes(x = "agestimate_perc", y = "scenario", 
-        color = "statmodel", shape = "statmodel"), size = 2) +
+    p9.geom_point(p9.aes(**aesdict), **pointkwargs) +
     p9.facet_wrap("region") +
-    p9.scale_color_manual(statmodel_colors) +
-    p9.scale_shape_manual(statmodel_shapes) +
-    p9.labs(color="Yield model", shape="Yield model") +
     p9.ylab("") + p9.xlab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change (%, area weighted)") +
     p9.theme_classic()
 )
+if iyield: 
+    dumplot = dumplot + p9.scale_color_manual(statmodel_colors) + p9.scale_shape_manual(statmodel_shapes) #+
+    dumplot = dumplot + p9.labs(color="Yield model", shape="Yield model") 
+
 print(dumplot)
 p9.ggsave(dumplot, varfolder + "/plot_regions_"+regtypestr+"_"+contvarname+"_areaweights")
 #%% Grand average, area weights
-dumdf = dfall.groupby(["scenario","statmodel"]).apply(lambda dfx: (dfx[contvarname] * dfx["sharea"]).sum() / dfx["sharea"].sum())
-dumdf = pd.DataFrame(dumdf.rename("agestimate_perc"))
-print(dumdf.query("statmodel == 'Ensemble'"))
+groupvars = ["scenario"]
+if iyield: groupvars.extend(["statmodel"])
+dumdf = dfall.groupby(groupvars).apply(lambda dfx: (dfx[contvarname] * dfx[agareavarname]).sum() / dfx[agareavarname].sum())
+dumdf = pd.DataFrame(dumdf.rename(contvarname))
+
+printdf = dumdf
+if iyield: printdf = printdf.query("statmodel == 'Ensemble'") 
+print(printdf)
+
+aesdict = {"x" : contvarname, "y" : "scenario"}
+pointkwargs = {"size" : 5}
+if iyield: 
+    aesdict.update({"color" : "statmodel", "shape" : "statmodel"})
+    pointkwargs.update({"size" : 10})
+
+else:
+    pointkwargs.update({"shape" : "d"})
+# if iyield: 
+#     aesdict.update({"color" : "statmodel", "shape" : "statmodel"})
+#     pointsize = 10
+
 dumplot = (
     p9.ggplot(dumdf.dropna().reset_index()) +
-    p9.geom_point(p9.aes(x = "agestimate_perc", y = "scenario",
-        color = "statmodel", shape = "statmodel"), size = 10) +
-    p9.scale_color_manual(statmodel_colors) +
-    p9.scale_shape_manual(statmodel_shapes) +
-    p9.labs(color="Yield model", shape="Yield model") +
+    p9.geom_point(p9.aes(**aesdict), **pointkwargs) +
     p9.ylab("") + p9.xlab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change (%, area weighted)") +
     p9.theme_classic()
 
 )
+if iyield: 
+    dumplot = dumplot + p9.scale_color_manual(statmodel_colors) + p9.scale_shape_manual(statmodel_shapes) #+
+    dumplot = dumplot + p9.labs(color="Yield model", shape="Yield model") 
+
 print(dumplot)
 p9.ggsave(dumplot, varfolder + "/plot_aggregated_"+contvarname+"_areaweights")
 #%% Grand average, production weights
-dumdf = dfall.groupby(["scenario","statmodel"]).apply(lambda dfx: (dfx[contvarname] * dfx["stprod"]).sum() / dfx["stprod"].sum())
-dumdf = pd.DataFrame(dumdf.rename("agestimate_perc"))
-print(dumdf.query("statmodel == 'Ensemble'"))
+groupvars = ["scenario"]
+if iyield: groupvars.extend(["statmodel"])
+dumdf = dfall.groupby(groupvars).apply(lambda dfx: (dfx[contvarname] * dfx[agprodvarname]).sum() / dfx[agprodvarname].sum())
+dumdf = pd.DataFrame(dumdf.rename(contvarname))
+
+printdf = dumdf
+if iyield: printdf = printdf.query("statmodel == 'Ensemble'") 
+print(printdf)
+
+aesdict = {"x" : contvarname, "y" : "scenario"}
+pointkwargs = {"size" : 5}
+if iyield: 
+    aesdict.update({"color" : "statmodel", "shape" : "statmodel"})
+    pointkwargs.update({"size" : 10})
+
+else:
+    pointkwargs.update({"shape" : "d"})
+# if iyield: 
+#     aesdict.update({"color" : "statmodel", "shape" : "statmodel"})
+#     pointsize = 10
+
 dumplot = (
     p9.ggplot(dumdf.dropna().reset_index()) +
-        p9.geom_point(p9.aes(x = "agestimate_perc", y = "scenario",
-        color = "statmodel", shape = "statmodel"), size = 10) +
-    p9.scale_color_manual(statmodel_colors) +
-    p9.scale_shape_manual(statmodel_shapes) +
-    p9.labs(color="Yield model", shape="Yield model") +
-    p9.ylab("") + p9.xlab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change (%, production weighted)") +
+    p9.geom_point(p9.aes(**aesdict), **pointkwargs) +
+    p9.ylab("") + p9.xlab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change (%, area weighted)") +
     p9.theme_classic()
+
 )
+if iyield: 
+    dumplot = dumplot + p9.scale_color_manual(statmodel_colors) + p9.scale_shape_manual(statmodel_shapes) #+
+    dumplot = dumplot + p9.labs(color="Yield model", shape="Yield model") 
+
 print(dumplot)
 p9.ggsave(dumplot, varfolder + "/plot_aggregated_"+contvarname+"_prodweights")
 # %%
