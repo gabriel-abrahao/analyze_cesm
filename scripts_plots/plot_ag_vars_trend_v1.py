@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import shapefile
 from scipy.stats import ttest_ind_from_stats
+from statsmodels.formula.api import ols
 import scipy
 import sys
 
@@ -104,9 +105,8 @@ elif crop == "maize":
     agprodvarname = "m2tprod"
 
 # ====================================== Contour variable
-contvarname = "tempmean"
-# contvarname = "agestimate"
-# contvarname = "agestimate_perc"
+# contvarname = "tempmean"
+contvarname = "agestimate_perc"
 
 if contvarname == "agestimate_perc":
     iyield = True
@@ -1156,6 +1156,9 @@ dsall["scenario"] = [scenstrdict[i] for i in list(dsall["scenario"].data)]
 dfall = dsall.to_dataframe().dropna(how="all").reset_index()
 dfall = dfall.replace({"region":regcodes})
 dfall["region"] = dfall["region"].loc[dfall["region"].isin(useregs)]
+dfall["rcpscen"] = dfall["scenario"].str[:6]
+dfall["luscen"] = dfall["scenario"].str[:6]
+
 
 #%% Uniform colors and shapes
 centralshape = "D"
@@ -1329,3 +1332,65 @@ if iyield:
 print(dumplot)
 p9.ggsave(dumplot, varfolder + "/plot_aggregated_"+contvarname+"_prodweights")
 # %%
+# ========================== CORRELATION PLOTS =============================
+def regression_string_fit(df, yvarname, xvarname):
+    model = ols(yvarname + "~" +xvarname, data = df)
+    results = model.fit()
+    b0str = "{0:.2g}".format(results.params["Intercept"])
+    b1str = "{0:.2g}".format(results.params[xvarname])
+    r2str = "{0:.2g}".format(results.rsquared)
+    regstr = "R2: " + r2str + "\n" + b0str + " + " + b1str + "x" 
+    return(regstr)
+
+groupvars = ["rcpscen","region"]
+# groupvars = ["scenario","region"]
+
+# # Faceting and add grouping for yield plots
+# if iyield:
+#     # facetstr = "+".join(groupvars)+"~statmodel"
+#     facet_function = p9.facet_grid("statmodel ~ region")
+#     groupvars = groupvars + ["statmodel"]
+# # else:
+#     facet_function = p9.facet_grid("~".join(groupvars))
+
+dfuse = dfall
+if iyield:
+    dfuse = dfall.query("statmodel=='Ensemble'")
+
+# Regressions
+dfanno = dfuse.groupby(groupvars).apply(regression_string_fit, contvarname, pftvarname).rename("equation").reset_index()
+ypos = dfuse[contvarname].max()
+xpos = dfuse[pftvarname].min()
+
+dumplot = (
+    p9.ggplot(dfuse.dropna(how="any",subset=[contvarname,pftvarname,"region"]),
+    ) + 
+    # p9.ggtitle(contvarname) + 
+    p9.aes(x="PCT_PFT", y=contvarname, color="region") +
+    p9.geom_point() +
+    # p9.coords.coord_fixed() +
+    # p9.facet_wrap("~" + "+".join(groupvars)) +
+    p9.facet_grid("~".join(groupvars)) +
+    # facet_function +
+    p9.xlab(deflevlabelstring) +
+    p9.ylab(deltads[contvarname].attrs["long_name"] + " (" + deltads[contvarname].attrs["units"] + ")") +
+    p9.geom_smooth(method = "lm", se = True, show_legend = False) +
+    p9.theme_classic() +
+    p9.theme(legend_position = "none") +
+    p9.geom_text(p9.aes(x=xpos,y=ypos,label="equation"), 
+        va = "top",
+        ha = "left",
+        color="black", 
+        data = dfanno)
+)
+print(dumplot)
+p9.ggsave(dumplot, varfolder + "/plot_regressions_"+"_".join(groupvars) + ".png")
+
+
+
+# %%
+# df = dfall.groupby(["rcpscen","region"]).get_group(('RCP2.6', 'AMAZ'))
+# yvarname = contvarname
+# xvarname = pftvarname
+
+
