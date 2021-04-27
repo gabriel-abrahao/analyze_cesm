@@ -5,18 +5,22 @@ import os
 import re
 import glob
 import copy
+import functools
 from datetime import datetime
 import xarray as xr
 import numpy as np
 import pandas as pd
 import shapefile
 from scipy.stats import ttest_ind_from_stats
+import scipy
 import sys
 
 import cartopy.crs as ccrs
+import matplotlib
 import matplotlib.pyplot as plt
+import matplotlib.path as mpath
 import plotnine as p9
-# %matplotlib inline
+%matplotlib inline
 
 sys.path.append("../")
 import pooled_stats 
@@ -72,15 +76,21 @@ if idefplots:
 ireadbio       =    True
 iplotbio       =    True
 iaddsumdef     =    True
+landmaskfname  =    "../auxdata/landmask.nc"
 biorastfname   =    "../auxdata/bioma.nc"
 bioshpfname    =    "../auxdata/biomas_WGS84_simp.shp"
+# bioshpfname    =    "../auxdata/biomas_WGS84.shp"
 
 # Read regions? We have to if we want to make all deforestation plots
 ireadregions = True
-regtypestr = "states"
-regfname =      "../regions/states_grid.nc"
-regcodesfname = "../regions/states_codes.csv"
-useregs = ["AM","PA","MT","MA","TO","PI"]
+# regtypestr = "states"
+# regfname =      "../regions/states_grid.nc"
+# regcodesfname = "../regions/states_codes.csv"
+# useregs = ["AM","PA","MT","MA","TO","PI"]
+regtypestr = "biomes"
+regfname =      "../regions/biomes_grid.nc"
+regcodesfname = "../regions/biomes_codes.csv"
+useregs = ["AMAZ","CERR"]
 
 # Read agricultural observed data
 ireadag         = True
@@ -94,9 +104,9 @@ elif crop == "maize":
     agprodvarname = "m2tprod"
 
 # ====================================== Contour variable
-# contvarname = "tempmean"
+contvarname = "tempmean"
 # contvarname = "agestimate"
-contvarname = "agestimate_perc"
+# contvarname = "agestimate_perc"
 
 if contvarname == "agestimate_perc":
     iyield = True
@@ -125,10 +135,22 @@ sigmodes = ["cont"]
 # Significance level threshold
 siglev = 0.05
 
+# Confidence interval for plotting
+cival = 0.95
+
 # Add text to the figure mentioning the significance level. Override and don't add it if no sigmode
 addsiglabel = True
 if len(sigmodes) == 0:
     addsiglabel = False
+
+# Dictionary of scenario strings
+scenstrdict =   {'rcp2.6_cmp' : 'RCP2.6-CMIP',
+                 'rcp2.6_seg' : 'RCP2.6-SEG',\
+                 'rcp2.6_weg' : 'RCP2.6-WEG',\
+                 'rcp8.5_cmp' : 'RCP8.5-CMIP',\
+                 'rcp8.5_seg' : 'RCP8.5-SEG',\
+                 'rcp8.5_weg' : 'RCP8.5-WEG'}
+
 
 # Domain string, limits are defined for each one further below
 # domain = "BIG1"
@@ -175,6 +197,7 @@ if contvarname == "tempmean":
     reversecolormap = False 
     reversedeltacolormap = False
     icolormapoverride   = False
+    idropwhites = True
 # # agestimate
 elif contvarname == "agestimate_perc":
     contlevels  = np.arange(0,10,1)
@@ -316,10 +339,10 @@ elif overlaytype == "wind":
 os.makedirs(os.path.dirname(plotfname), exist_ok=True)
 
 # Set up a bounding box right outside the plotting area so the wind vectors are nice
-rminlat = minlat-3
-rmaxlat = maxlat+3
-rminlon = minlon-3
-rmaxlon = maxlon+3
+rminlat = minlat-5
+rmaxlat = maxlat+5
+rminlon = minlon-5
+rmaxlon = maxlon+5
 
 # Month numbers to strings
 monstrs = {1:"Jan",2:"Feb",3:"Mar",4:"Apr",\
@@ -541,6 +564,27 @@ def add_shapefile_df_polygons(wks,plotobj,shp,res=None):
         (tx, ty) = tuple(zip(*tcoords))
         Ngl.add_polygon(wks, plotobj,tx,ty,res)
 
+def wavg(group, avg_name, weight_name):
+    """ http://stackoverflow.com/questions/10951341/pandas-dataframe-aggregate-function-using-multiple-columns
+    In rare instance, we may not have weights, so just return the mean. Customize this if your business case
+    should return otherwise.
+    """
+    d = group[avg_name]
+    w = group[weight_name]
+    try:
+        return (d * w).sum() / w.sum()
+    except ZeroDivisionError:
+        # return d.mean()
+        return np.nan
+
+# Aggregates all numeric variables in a Dataframe by groupvars by calculating a weighted average
+def aggregate_weighted(dfin, groupvars, wgtvarname):
+    aggvars = [i for i in dfin.columns if i not in (groupvars + [wgtvarname])]
+    aggvars = [i for i in aggvars if np.issubdtype(dfin.dtypes[i], np.number)]
+    dumdflist = [dfin.groupby(groupvars).apply(wavg,vname,wgtvarname).rename(vname) for vname in aggvars]
+    dumdf = functools.reduce(lambda x, y: pd.merge(x, y, on = groupvars), dumdflist)
+    return(dumdf)
+
 #%%
 # ============================================= BEGIN READING FILES
 
@@ -646,6 +690,9 @@ if idefplots:
 if ireadregions:
     regions = xr.open_dataarray(regfname).interp_like(deltads, method = "nearest").rename("region")
 
+if "time" in regions.coords:
+    regions = regions.squeeze("time", drop=True)
+
 regcodes = pd.read_csv(regcodesfname).set_index("code").T.to_dict("list")
 regcodes = {i:regcodes[i][0] for i in regcodes.keys()}
 
@@ -659,8 +706,10 @@ if ireadbio:
     biorast = biorast.squeeze("time",drop=True)
     biorast = biorast.where(biorast != 0).rename("biome")
 
+    landmask = xr.open_dataarray(landmaskfname).interp_like(deltads, method="nearest")
+
     bioshp = read_shapefile(bioshpfname)
-    bioshp = bioshp.loc[bioshp["biomestr"].isin(["AMAZ","CERR"])]
+    bioshp = bioshp.loc[bioshp["biomestr"].isin(useregs)]
 
     if iplotbio:
         biores = Ngl.Resources()
@@ -672,13 +721,16 @@ if ireadbio:
     # Summarize deforestation data by biome
     sumdeflev = xr.merge([defarr,biorast])
     # sumdeflev = sumdeflev.weighted(geo_utils.get_pixel_areas(sumdeflev)) # Open issue #3937 on xarray 0.16.2: no GroupBy weights
-    sumdeflev = sumdeflev.groupby("biome").mean().to_dataframe()
-    sumdeflev = bioshp.drop("coords",axis=1).rename(columns={"CD_Bioma" : "biome"}).merge(sumdeflev.reset_index(), on="biome")
+    sumdeflev = sumdeflev.groupby("biome").mean().to_dataframe().reset_index()
+    # sumdeflev = bioshp.drop("coords",axis=1).rename(columns={"CD_Bioma" : "biome"}).merge(sumdeflev.reset_index(), on="biome")
+    sumdeflev["biomestr"] = sumdeflev["biome"].replace(regcodes)
+    sumdeflev = sumdeflev.query("biomestr.isin(@useregs)")    
 
     sumdefdiff = xr.merge([cmpdefdelta,biorast])
-    sumdefdiff = sumdefdiff.groupby("biome").mean().to_dataframe()
-    sumdefdiff = bioshp.drop("coords",axis=1).rename(columns={"CD_Bioma" : "biome"}).merge(sumdefdiff.reset_index(), on="biome")
-
+    sumdefdiff = sumdefdiff.groupby("biome").mean().to_dataframe().reset_index()
+    # sumdefdiff = bioshp.drop("coords",axis=1).rename(columns={"CD_Bioma" : "biome"}).merge(sumdefdiff.reset_index(), on="biome")
+    sumdefdiff["biomestr"] = sumdefdiff["biome"].replace(regcodes)
+    sumdefdiff = sumdefdiff.query("biomestr.isin(@useregs)")    
 
 # %% ===================== LEVEL PLOTS ===================================================================
 #    =======================================================================================================
@@ -778,7 +830,7 @@ for scen in scenarios:
     contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),scontres)
     
     splots.append(contplot)
-    sfigstrs.append(str(scen))
+    sfigstrs.append(str(scenstrdict[scen]))
 
 spanelres                                  = Ngl.Resources()
 spanelres.nglPanelFigureStrings            = sfigstrs
@@ -872,7 +924,7 @@ for scen in scenarios:
     contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),efcontres)
     
     efplots.append(contplot)
-    effigstrs.append(str(scen))
+    effigstrs.append(str(scenstrdict[scen]))
 
 efpanelres                                  = Ngl.Resources()
 efpanelres.nglPanelFigureStrings            = effigstrs
@@ -970,7 +1022,7 @@ if idefplots:
 
 
         defplots.append(defplot)
-        deffigstrs.append(str(scen))
+        deffigstrs.append(str(scenstrdict[scen]))
 
     defpanelres                                  = Ngl.Resources()
     defpanelres.nglPanelFigureStrings            = deffigstrs
@@ -1041,7 +1093,8 @@ if idefplots:
     for scen in scenarios:
         # contres.tiMainString = usemon
         dssubset = defarr.sel(scenario = scen)
-        dssubset = dssubset.where(np.abs(dssubset) > 1e-12) # A low threshold to eliminate off-country values
+        # dssubset = dssubset.where(np.abs(dssubset) > 1e-12) # A low threshold to eliminate off-country values
+        dssubset = dssubset.where(np.invert(np.isnan(landmask)))
         deflevplot = Ngl.contour_map(wks,dssubset.to_masked_array(),deflevres)
 
         if iplotbio:
@@ -1059,7 +1112,7 @@ if idefplots:
                 Ngl.add_text(wks,deflevplot,textstr,textx,texty, restext)
 
         deflevplots.append(deflevplot)
-        deflevfigstrs.append(str(scen))
+        deflevfigstrs.append(str(scenstrdict[scen]))
 
     defpanelres                                  = Ngl.Resources()
     defpanelres.nglPanelFigureStrings            = deflevfigstrs
@@ -1083,18 +1136,29 @@ if idefplots:
 
     Ngl.delete_wks(wks)
 
-#%% ==============================TABULAR=============================
+#%% =============================================================TABULAR=============================
+
+# Calculate confidence intervals
+ciloz = scipy.stats.norm.ppf(0.5-(cival/2))
+ciupz = scipy.stats.norm.ppf(0.5+(cival/2))
+deltads["cilo"] = deltads[contvarname] + ciloz*(deltads[contvarname+"_var"]**0.5)
+deltads["ciup"] = deltads[contvarname] + ciupz*(deltads[contvarname+"_var"]**0.5)
+
 # Merge all level datasets
 dsall = drop_unused(deltads).merge(defarr)
 dsall = dsall.merge(agdsin.sel(year=agyear, drop=True))
 dsall = dsall.merge(regions)
 
+
+
+dsall["scenario"] = [scenstrdict[i] for i in list(dsall["scenario"].data)]
 # Convert to DataFrame
 dfall = dsall.to_dataframe().dropna(how="all").reset_index()
 dfall = dfall.replace({"region":regcodes})
+dfall["region"] = dfall["region"].loc[dfall["region"].isin(useregs)]
 
 #%% Uniform colors and shapes
-centralshape = "d"
+centralshape = "D"
 statmodel_properties = {
     'Ensemble' : ("black", centralshape), 
     'GDD + EDD' : ("red", "."), 
@@ -1102,21 +1166,32 @@ statmodel_properties = {
     'GDD + EDD + VPD + Prec' : ("purple", "."), 
     'VPD' : ("blue", ".")
 }
+# transpath = matplotlib.transforms.Affine2D()
+# statmodel_properties = {
+#     'Ensemble' : ("black", mpath.Path.unit_circle().transformed(transpath.scale(0.5))), 
+#     'GDD + EDD' : ("red", mpath.Path.unit_circle().transformed(transpath.scale(0.5))), 
+#     'GDD + EDD + VPD' : ("orange", mpath.Path.unit_circle().transformed(transpath.scale(0.5))),
+#     'GDD + EDD + VPD + Prec' : ("purple", mpath.Path.unit_circle().transformed(transpath.scale(0.5))), 
+#     'VPD' : ("blue", mpath.Path.unit_circle().transformed(transpath.scale(0.5)))
+# }
 statmodel_colors = {i:statmodel_properties[i][0] for i in statmodel_properties.keys()}
 statmodel_shapes = {i:statmodel_properties[i][1] for i in statmodel_properties.keys()}
 #%% By region, area weights
 groupvars = ["region","scenario"]
 if iyield: groupvars.extend(["statmodel"])
 
-dumdf = dfall.groupby(groupvars).apply(lambda dfx: (dfx[contvarname] * dfx[agareavarname]).sum() / dfx[agareavarname].sum())
-dumdf = pd.DataFrame(dumdf.rename(contvarname))#.reset_index()
+# dumdf = dfall.groupby(groupvars).apply(lambda dfx: (dfx[contvarname] * dfx[agareavarname]).sum() / dfx[agareavarname].sum())
+# dumdf = pd.DataFrame(dumdf.rename(contvarname))#.reset_index()
+# dumdf = dumdf.reset_index()
+dumdf = aggregate_weighted(dfall, groupvars, agareavarname)
 
 printdf = dumdf
 if iyield: printdf = printdf.query("statmodel=='Ensemble'") 
 printdf.reset_index("scenario").pivot(columns="scenario")
+print(printdf)
 
-aesdict = {"x" : contvarname, "y" : "scenario"}
-pointkwargs = {"size" : 2}
+aesdict = {"y" : contvarname, "x" : "scenario"}
+pointkwargs = {"size" : 5}
 if iyield: 
     aesdict.update({"color" : "statmodel", "shape" : "statmodel"})
 else:
@@ -1125,34 +1200,81 @@ else:
 dumplot = (
     p9.ggplot(dumdf.dropna().reset_index()) +
     p9.geom_point(p9.aes(**aesdict), **pointkwargs) +
+    p9.geom_errorbar(p9.aes(ymin="cilo",ymax="ciup",x="scenario")) + 
     p9.facet_wrap("region") +
-    p9.ylab("") + p9.xlab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change (%, area weighted)") +
+    p9.xlab("") + p9.ylab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change (%, area weighted)") +
     p9.theme_classic()
 )
 if iyield: 
     dumplot = dumplot + p9.scale_color_manual(statmodel_colors) + p9.scale_shape_manual(statmodel_shapes) #+
     dumplot = dumplot + p9.labs(color="Yield model", shape="Yield model") 
-
+# Rotate legends
+dumplot = dumplot + p9.theme(axis_text_x = p9.element_text(angle = 45, vjust = 1.0, hjust=1))
+# Add horizontal line
+dumplot = dumplot + p9.geom_hline(p9.aes(yintercept=0.0), color = "gray", linetype = "dashed")
+# dumplot = dumplot + p9.theme(legend_background=p9.element_blank(), legend_position=(0.28,0.27))
 print(dumplot)
 p9.ggsave(dumplot, varfolder + "/plot_regions_"+regtypestr+"_"+contvarname+"_areaweights")
-#%% Grand average, area weights
+
+#%% By region, NO weights
+groupvars = ["region","scenario"]
+if iyield: groupvars.extend(["statmodel"])
+
+dumdf = dfall.groupby(groupvars).mean()
+dumdf = pd.DataFrame(dumdf)#.reset_index()
+# dumdf = dumdf.reset_index()
+# dumdf = aggregate_weighted(dfall, groupvars, agareavarname)
+
+printdf = dumdf
+if iyield: printdf = printdf.query("statmodel=='Ensemble'") 
+printdf.reset_index("scenario").pivot(columns="scenario")
+print(printdf)
+
+aesdict = {"y" : contvarname, "x" : "scenario"}
+pointkwargs = {"size" : 5}
+if iyield: 
+    aesdict.update({"color" : "statmodel", "shape" : "statmodel"})
+else:
+    pointkwargs.update({"shape" : "d"})
+
+dumplot = (
+    p9.ggplot(dumdf.dropna().reset_index()) +
+    p9.geom_point(p9.aes(**aesdict), **pointkwargs) +
+    p9.geom_errorbar(p9.aes(ymin="cilo",ymax="ciup",x="scenario")) + 
+    p9.facet_wrap("region") +
+    p9.xlab("") + p9.ylab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change (no weights)") +
+    p9.theme_classic()
+)
+if iyield: 
+    dumplot = dumplot + p9.scale_color_manual(statmodel_colors) + p9.scale_shape_manual(statmodel_shapes) #+
+    dumplot = dumplot + p9.labs(color="Yield model", shape="Yield model") 
+# Rotate legends
+dumplot = dumplot + p9.theme(axis_text_x = p9.element_text(angle = 45, vjust = 1.0, hjust=1))
+# Add horizontal line
+dumplot = dumplot + p9.geom_hline(p9.aes(yintercept=0.0), color = "gray", linetype = "dashed")
+# dumplot = dumplot + p9.theme(legend_background=p9.element_blank(), legend_position=(0.28,0.27))
+print(dumplot)
+p9.ggsave(dumplot, varfolder + "/plot_regions_"+regtypestr+"_"+contvarname+"_noweights")
+
+#%% Grand average, area weights TRANPOSED
+
 groupvars = ["scenario"]
 if iyield: groupvars.extend(["statmodel"])
-dumdf = dfall.groupby(groupvars).apply(lambda dfx: (dfx[contvarname] * dfx[agareavarname]).sum() / dfx[agareavarname].sum())
-dumdf = pd.DataFrame(dumdf.rename(contvarname))
+
+dumdf = aggregate_weighted(dfall, groupvars, agareavarname)
 
 printdf = dumdf
 if iyield: printdf = printdf.query("statmodel == 'Ensemble'") 
 print(printdf)
 
-aesdict = {"x" : contvarname, "y" : "scenario"}
+aesdict = {"y" : contvarname, "x" : "scenario"}
 pointkwargs = {"size" : 5}
 if iyield: 
     aesdict.update({"color" : "statmodel", "shape" : "statmodel"})
     pointkwargs.update({"size" : 10})
 
 else:
-    pointkwargs.update({"shape" : "d"})
+    pointkwargs.update({"shape" : "D"})
 # if iyield: 
 #     aesdict.update({"color" : "statmodel", "shape" : "statmodel"})
 #     pointsize = 10
@@ -1160,6 +1282,7 @@ else:
 dumplot = (
     p9.ggplot(dumdf.dropna().reset_index()) +
     p9.geom_point(p9.aes(**aesdict), **pointkwargs) +
+    p9.geom_errorbar(p9.aes(ymin="cilo",ymax="ciup",x="scenario")) + 
     p9.ylab("") + p9.xlab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change (%, area weighted)") +
     p9.theme_classic()
 
@@ -1169,7 +1292,7 @@ if iyield:
     dumplot = dumplot + p9.labs(color="Yield model", shape="Yield model") 
 
 print(dumplot)
-p9.ggsave(dumplot, varfolder + "/plot_aggregated_"+contvarname+"_areaweights")
+
 #%% Grand average, production weights
 groupvars = ["scenario"]
 if iyield: groupvars.extend(["statmodel"])
