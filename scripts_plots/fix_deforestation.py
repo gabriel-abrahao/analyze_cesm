@@ -50,10 +50,10 @@ years = [1980,2030,2050]
 # maxlon = 326.0
 # minlon = 280.0
 
-minlat = -35
-maxlat = 7
-minlon = 287
-maxlon = 328
+minlat = -35 - 10
+maxlat = 7   + 10
+minlon = 287 - 10
+maxlon = 328 + 10
 
 # %%
 
@@ -73,7 +73,7 @@ for scenario in dicfnames:
     arr = arr.rename(dict(zip(list(arr.dims),[i[3:6] if i[0:3] == 'lsm' else i for i in list(arr.dims)])))
     # arr = arr.sel(time = years, lat = slice(minlat,maxlat), lon = slice(minlon,maxlon))
     arr = arr.sel(time = slice(np.min(years),np.max(years)), lat = slice(minlat,maxlat), lon = slice(minlon,maxlon))
-    
+    # arr = arr.sel(time = slice(np.min(years),np.max(years)))
     # Add the scenario name as an attribute
     arr.attrs["defscenario"] = scenario
     arr.to_netcdf(outfname)
