@@ -21,7 +21,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.path as mpath
 import plotnine as p9
-%matplotlib inline
+# %matplotlib inline
 
 sys.path.append("../")
 import pooled_stats 
@@ -92,6 +92,10 @@ regtypestr = "biomes"
 regfname =      "../regions/biomes_grid.nc"
 regcodesfname = "../regions/biomes_codes.csv"
 useregs = ["AMAZ","CERR"]
+reglongnamesdict = {
+    "AMAZ" : "Amazonia",
+    "CERR" : "Cerrado"
+}
 
 # Read agricultural observed data
 ireadag         = True
@@ -104,8 +108,12 @@ elif crop == "maize":
     agareavarname = "m2harea"
     agprodvarname = "m2tprod"
 
-# ====================================== Contour variable
+# ====================================== Contour variable ====================================
 # contvarname = "tempmean"
+# contvarname = "edd"
+# contvarname = "gdd"
+# contvarname = "vpdmean"
+# contvarname = "precmean"
 contvarname = "agestimate_perc"
 
 if contvarname == "agestimate_perc":
@@ -115,7 +123,11 @@ else:
 
 varshortnamedict = {
     "agestimate_perc" : "yield",
-    "tempmean" : "daily mean temperature"
+    "tempmean" : "daily mean temperature",
+    "edd" : "EDD",
+    "gdd" : "GDD",
+    "vpdmean" : "mean VPD",
+    "precmean" : "mean daily precipitation"
 }
 
 # Select this model TODO: change the structure to support multi-model plots
@@ -210,6 +222,43 @@ elif contvarname == "agestimate_perc":
     reversedeltacolormap = True
     icolormapoverride   = False
     colormapoverride    = "WhiteBlue"
+    idropwhites = True
+# # edd
+elif contvarname == "edd":
+    contlevels  = np.arange(0,10,1)
+    deltalevels = np.arange(-70,70.1,10)
+    eflevels = np.arange(-40,40.1,5)
+    reversecolormap = False 
+    reversedeltacolormap = False
+    icolormapoverride   = False
+    idropwhites = True
+# # gdd
+elif contvarname == "gdd":
+    contlevels  = np.arange(0,10,1)
+    deltalevels = np.arange(-250,250.1,25)
+    eflevels = np.arange(-100,100.1,20)
+    reversecolormap = False 
+    reversedeltacolormap = False
+    icolormapoverride   = False
+    idropwhites = True
+# # vpdmean
+elif contvarname == "vpdmean":
+    contlevels  = np.arange(0,10,1)
+    deltalevels = np.arange(-5,5.1,0.5)
+    eflevels = np.arange(-4,4.1,0.5)
+    reversecolormap = False 
+    reversedeltacolormap = False
+    icolormapoverride   = False
+    idropwhites = True
+# # precmean
+elif contvarname == "precmean":
+    contlevels  = np.arange(0,10,1)
+    deltalevels = np.arange(-3,3.1,0.5)
+    eflevels = np.arange(-2,2.1,0.25)
+    reversecolormap = False 
+    reversedeltacolormap = True
+    icolormapoverride   = False
+    # colormapoverride    = "WhiteBlue"
     idropwhites = True
 # # PRECT
 elif contvarname == "PRECT":
@@ -629,6 +678,30 @@ elif contvarname == "tempmean":
 
     efds[contvarname].attrs["long_name"] = "Difference in " + "Temperature trend over "+str(nyearstrend)+" years"
     efds[contvarname].attrs["units"] = "degC"
+elif contvarname == "edd":
+    deltads[contvarname].attrs["long_name"] = "EDD trend over "+str(nyearstrend)+" years"
+    deltads[contvarname].attrs["units"] = "degC day"
+
+    efds[contvarname].attrs["long_name"] = "Difference in " + "EDD trend over "+str(nyearstrend)+" years"
+    efds[contvarname].attrs["units"] = "degC day"
+elif contvarname == "gdd":
+    deltads[contvarname].attrs["long_name"] = "GDD trend over "+str(nyearstrend)+" years"
+    deltads[contvarname].attrs["units"] = "degC day"
+
+    efds[contvarname].attrs["long_name"] = "Difference in " + "GDD trend over "+str(nyearstrend)+" years"
+    efds[contvarname].attrs["units"] = "degC day"
+elif contvarname == "vpdmean":
+    deltads[contvarname].attrs["long_name"] = "VPD trend over "+str(nyearstrend)+" years"
+    deltads[contvarname].attrs["units"] = "hPa"
+
+    efds[contvarname].attrs["long_name"] = "Difference in " + "VPD trend over "+str(nyearstrend)+" years"
+    efds[contvarname].attrs["units"] = "hPa"
+elif contvarname == "precmean":
+    deltads[contvarname].attrs["long_name"] = "Precipitation trend over "+str(nyearstrend)+" years"
+    deltads[contvarname].attrs["units"] = "mm day-1"
+
+    efds[contvarname].attrs["long_name"] = "Difference in " + "Precipitation trend over "+str(nyearstrend)+" years"
+    efds[contvarname].attrs["units"] = "mm day-1"
 
 
 # %%
@@ -1156,18 +1229,20 @@ dsall["scenario"] = [scenstrdict[i] for i in list(dsall["scenario"].data)]
 dfall = dsall.to_dataframe().dropna(how="all").reset_index()
 dfall = dfall.replace({"region":regcodes})
 dfall["region"] = dfall["region"].loc[dfall["region"].isin(useregs)]
+dfall = dfall.replace({"region":reglongnamesdict})
 dfall["rcpscen"] = dfall["scenario"].str[:6]
 dfall["luscen"] = dfall["scenario"].str[:6]
 
 
 #%% Uniform colors and shapes
-centralshape = "D"
+centralshape = "d"
 statmodel_properties = {
-    'Ensemble' : ("black", centralshape), 
-    'GDD + EDD' : ("red", "."), 
-    'GDD + EDD + VPD' : ("orange", "."),
-    'GDD + EDD + VPD + Prec' : ("purple", "."), 
-    'VPD' : ("blue", ".")
+    'Ensemble' : ("black", centralshape,7.0), 
+    # 'Ensemble' : ("black", ".",7.0), 
+    'GDD + EDD' : ("red", ".",5.0), 
+    'GDD + EDD + VPD' : ("orange", ".",5.0),
+    'GDD + EDD + VPD + Prec' : ("purple", ".",5.0), 
+    'VPD' : ("blue", ".",5.0)
 }
 # transpath = matplotlib.transforms.Affine2D()
 # statmodel_properties = {
@@ -1179,6 +1254,7 @@ statmodel_properties = {
 # }
 statmodel_colors = {i:statmodel_properties[i][0] for i in statmodel_properties.keys()}
 statmodel_shapes = {i:statmodel_properties[i][1] for i in statmodel_properties.keys()}
+statmodel_sizes  = {i:statmodel_properties[i][2] for i in statmodel_properties.keys()}
 #%% By region, area weights
 groupvars = ["region","scenario"]
 if iyield: groupvars.extend(["statmodel"])
@@ -1194,22 +1270,37 @@ printdf.reset_index("scenario").pivot(columns="scenario")
 print(printdf)
 
 aesdict = {"y" : contvarname, "x" : "scenario"}
-pointkwargs = {"size" : 5}
+erraesdict = {"ymin" : "cilo","ymax" : "ciup","x" : "scenario"}
+pointkwargs = {}
 if iyield: 
+    # aesdict.update({"color" : "statmodel", "shape" : "statmodel", "size" : "statmodel", "group" : "statmodel"})
+    # aesdict.update({"color" : "statmodel", "size" : "statmodel"})
     aesdict.update({"color" : "statmodel", "shape" : "statmodel"})
+    erraesdict.update({"color" : "statmodel"})
+    pointkwargs.update({"size" : 5})
 else:
-    pointkwargs.update({"shape" : "d"})
+    pointkwargs.update({"shape" : "d", "size" : 5})
 
+posd = p9.position_dodge(0.0)
 dumplot = (
-    p9.ggplot(dumdf.dropna().reset_index()) +
-    p9.geom_point(p9.aes(**aesdict), **pointkwargs) +
-    p9.geom_errorbar(p9.aes(ymin="cilo",ymax="ciup",x="scenario")) + 
+    # p9.ggplot(dumdf.dropna().reset_index()) +
+    # p9.geom_point(p9.aes(**aesdict), **pointkwargs) +
+    p9.ggplot(dumdf.dropna().reset_index(), p9.aes(**aesdict)) +
+    p9.geom_point(**pointkwargs, position = posd) +
+    p9.geom_errorbar(p9.aes(**erraesdict),
+        width=0.4,size=0.8, position = posd) + 
+    # p9.geom_errorbar(p9.aes(ymin="cilo",ymax="ciup",x="scenario"),color="statmodel"),
+    #     width=0.4,size=0.8, position = posd) + 
     p9.facet_wrap("region") +
-    p9.xlab("") + p9.ylab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change (%, area weighted)") +
+    p9.xlab("") + 
+    p9.ylab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change ("+deltads[contvarname].attrs["units"]+", area weighted)") +
     p9.theme_classic()
 )
+
 if iyield: 
-    dumplot = dumplot + p9.scale_color_manual(statmodel_colors) + p9.scale_shape_manual(statmodel_shapes) #+
+    dumplot = (dumplot + p9.scale_color_manual(statmodel_colors) + 
+        p9.scale_shape_manual(statmodel_shapes))# +
+        # p9.scale_size_manual(statmodel_sizes))
     dumplot = dumplot + p9.labs(color="Yield model", shape="Yield model") 
 # Rotate legends
 dumplot = dumplot + p9.theme(axis_text_x = p9.element_text(angle = 45, vjust = 1.0, hjust=1))
@@ -1245,7 +1336,7 @@ dumplot = (
     p9.geom_point(p9.aes(**aesdict), **pointkwargs) +
     p9.geom_errorbar(p9.aes(ymin="cilo",ymax="ciup",x="scenario")) + 
     p9.facet_wrap("region") +
-    p9.xlab("") + p9.ylab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change (no weights)") +
+    p9.xlab("") + p9.ylab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change ("+deltads[contvarname].attrs["units"]+"no weights)") +
     p9.theme_classic()
 )
 if iyield: 
@@ -1286,7 +1377,7 @@ dumplot = (
     p9.ggplot(dumdf.dropna().reset_index()) +
     p9.geom_point(p9.aes(**aesdict), **pointkwargs) +
     p9.geom_errorbar(p9.aes(ymin="cilo",ymax="ciup",x="scenario")) + 
-    p9.ylab("") + p9.xlab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change (%, area weighted)") +
+    p9.ylab("") + p9.xlab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change ("+deltads[contvarname].attrs["units"]+", area weighted)") +
     p9.theme_classic()
 
 )
@@ -1321,7 +1412,7 @@ else:
 dumplot = (
     p9.ggplot(dumdf.dropna().reset_index()) +
     p9.geom_point(p9.aes(**aesdict), **pointkwargs) +
-    p9.ylab("") + p9.xlab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change (%, area weighted)") +
+    p9.ylab("") + p9.xlab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change ("+deltads[contvarname].attrs["units"]+", area weighted)") +
     p9.theme_classic()
 
 )
