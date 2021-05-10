@@ -7,6 +7,7 @@ import fiona
 import rasterio
 import rioxarray
 import affine
+import copy
 
 import tqdm
 import os
@@ -23,6 +24,50 @@ def get_lat_lon_name(da):
     latname = [i for i in da.coords if i in latopts][0]
     lonname = [i for i in da.coords if i in lonopts][0]
     return((latname,lonname))
+
+def get_lon_name(d):
+    return(get_lat_lon_name(d)[1])
+
+# Flipped here means that it goes from -180 to 180
+def global_is_lon_flipped(d):
+    lonname = get_lon_name(d)
+    return not not np.any(d[lonname]<0.0).data # The double negation converts it to a python boolean
+
+# Just works from a nonflipped (0:360) global grid
+def global_lon_flip(d):
+    lonname = get_lon_name(d)
+    nlon = d[lonname].size
+    dflip = copy.deepcopy(d.roll(lon=int(nlon/2),roll_coords=False))
+    # dflip[lonname] = dflip[lonname] - 180.0
+    dflip = dflip.assign_coords({lonname : dflip[lonname] - 180.0})
+    dflip = dlip.assign_
+    return dflip
+
+# 
+def global_lon_unflip(d):
+    lonname = get_lon_name(d)
+    nlon = d[lonname].size
+    dflip = copy.deepcopy(d.roll(lon=int(nlon/2),roll_coords=False))
+    # dflip[lonname] = dflip[lonname] + 180.0
+    dflip = dflip.assign_coords({lonname : dflip[lonname] + 180.0})
+    return dflip
+
+# %%
+def brazil_lon_unflip(d):
+    dflip = copy.deepcopy(d)
+    lonname = get_lon_name(d) 
+    # lons = d[lonname].data
+    # dflip[lonname].data = lons-360
+    dflip = dflip.assign_coords({lonname : dflip[lonname] - 360.0})
+    return dflip
+
+def brazil_lon_flip(d):
+    dflip = copy.deepcopy(d)
+    lonname = get_lon_name(d) 
+    # lons = d[lonname].data
+    # dflip[lonname].data = lons-360
+    dflip = dflip.assign_coords({lonname : dflip[lonname] + 360.0})
+    return dflip
 
 # Replaces np.nan with zeros in a Dataarray
 def nan_to_zero(da):
