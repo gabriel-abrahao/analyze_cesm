@@ -620,6 +620,9 @@ for crop in crops:
         ndeg = nyears - 2 # Trend parameters estimated
         trends = ensemble_stats_from_stats(trends, ndeg)
         
+        # Add the reference used
+        trends = trends.merge(add_suf(refrs,"_ref"))
+        trends = trends.merge(add_suf(rsbias,"_bias"))
         
         trends.attrs["nyears"] = (teyear - tsyear + 1)
         trends.attrs["bootstrap_nsamp"] = nsamp
@@ -651,9 +654,6 @@ for crop in crops:
     # # Won't work here because we are multiplying by nyearstrend only on the plotting phase
     # deltattests = deltattests.merge(add_suf(deltattests[rsvarnames] + refrs,"bc"))
     # deltattests = deltattests.merge(add_suf(rem_suf(deltattests[[i+"_pval" for i in rsvarnames]],"_pval"),"bc_pval"))
-
-    # Add the reference used
-    deltattests = deltattests.merge(add_suf(refrs,"_ref"))
 
     # Adding some metadata
     deltattests = add_meta_dict(deltattests, metadict)

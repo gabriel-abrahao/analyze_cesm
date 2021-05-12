@@ -51,6 +51,15 @@ def calc_slope_wrap(df,timeindex,regvarindex):
 # using a nsamp bootsrap
 @jit(nopython=True, fastmath=False)
 def calc_slope_bootstrap(dfmat, nsamp = 30):
+    # Remove rows with nans
+    # This doesnt work because the numba version of any doesn't support the axis argument
+    # dfmat = dfmat[~np.isnan(dfmat).any(axis=1)]]
+    # msk = np.array(np.ones(len(dfmat)),dtype=np.bool)
+    msk = np.empty(len(dfmat),np.bool_) # Note the underscore on the dtype for numba to work
+    for i in np.arange(len(dfmat)):
+        msk[i] = ~np.any(np.isnan(dfmat[i,:]))
+    dfmat = dfmat[msk]
+
     xin = dfmat[:,0]
     yin = dfmat[:,1]
 
