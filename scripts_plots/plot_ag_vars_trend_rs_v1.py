@@ -1,5 +1,6 @@
 # Plots 
 #%% 
+from operator import index
 import Ngl
 import os
 import re
@@ -31,8 +32,8 @@ import geo_utils
 # REMEMBER PATHS ARE RELATIVE TO THE SCRIPT FOLDER!
 motherfolder = "../"
 
-crop = "single"
-# crop = "maize"
+# crop = "single"
+crop = "maize"
 calname = "Oct15-Mar1_Jan15-Jun15"
 
 baseinfolder = motherfolder + "output_ag/ag_vars/" + calname + "/" # Below here should be scenario folders, and below them the files
@@ -85,10 +86,13 @@ bioshpfname    =    "../auxdata/biomas_WGS84_simp.shp"
 
 # Read regions? We have to if we want to make all deforestation plots
 ireadregions = True
-# regtypestr = "states"
-# regfname =      "../regions/states_grid.nc"
-# regcodesfname = "../regions/states_codes.csv"
-# useregs = ["AM","PA","MT","MA","TO","PI"]
+statetypestr = "states"
+statefname =      "../regions/states_grid.nc"
+statecodesfname = "../regions/states_codes.csv"
+# usestates = ["AM","PA","MT","MA","TO","PI"]
+usestates = ["AM","PA","MT","GO","MA"]
+statelongnamesdict = {i:i for i in usestates}
+
 regtypestr = "biomes"
 regfname =      "../regions/biomes_grid.nc"
 regcodesfname = "../regions/biomes_codes.csv"
@@ -105,13 +109,25 @@ agyear          = 2016
 if crop == "single":
     agareavarname = "sharea"
     agprodvarname = "stprod"
+    agyieldvarname = "syield"
 elif crop == "maize":
     agareavarname = "m2harea"
     agprodvarname = "m2tprod"
+    agyieldvarname = "m2yield"
 
 iplotag         =   True # Overridden if we are not plotting yields
 agshpfname = "../auxdata/vec_"+agareavarname+"frac_2016_gt_1pp.shp"
     
+######### TEST
+ireadagproj = True
+classwegfname = "/media/gabriel/hd1_6tb/backup/gabriel/transicao/doutorado/gen_lu_cesm/out_rochedo/fraction_weg_comp_2012-2050.nc"
+classsegfname = "/media/gabriel/hd1_6tb/backup/gabriel/transicao/doutorado/gen_lu_cesm/out_rochedo/fraction_seg_comp_2012-2050.nc"
+
+if crop == "single":
+    cropclasscodes = [11,35,36,38]
+if crop == "maize":
+    cropclasscodes = [25,35]
+
 
 # ====================================== Contour variable ====================================
 # contvarname = "tempmean"
@@ -119,9 +135,9 @@ agshpfname = "../auxdata/vec_"+agareavarname+"frac_2016_gt_1pp.shp"
 # contvarname = "gdd"
 # contvarname = "vpdmean"
 # contvarname = "precmean"
-# contvarname = "agestimate_perc"
+contvarname = "agestimate_perc"
 
-contvarname = "outslen"
+# contvarname = "outslen"
 
 if contvarname == "agestimate_perc":
     iyield = True
@@ -174,10 +190,10 @@ if len(sigmodes) == 0:
     addsiglabel = False
 
 # Dictionary of scenario strings
-scenstrdict =   {'rcp2.6_cmp' : 'RCP2.6-CMIP',
+scenstrdict =   {'rcp2.6_cmp' : 'RCP2.6-CMIP5',
                  'rcp2.6_seg' : 'RCP2.6-SEG',\
                  'rcp2.6_weg' : 'RCP2.6-WEG',\
-                 'rcp8.5_cmp' : 'RCP8.5-CMIP',\
+                 'rcp8.5_cmp' : 'RCP8.5-CMIP5',\
                  'rcp8.5_seg' : 'RCP8.5-SEG',\
                  'rcp8.5_weg' : 'RCP8.5-WEG'}
 
@@ -192,6 +208,8 @@ varfolder = "../output_plots/ag_new/" + crop + "/" + contvarname
 plotfname =     varfolder + "/" + "trend_" + "deltahist_" + usemodelstr + "_" + str(fsyear) + "_" + str(feyear) + "_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) 
 efplotfname =   varfolder + "/" + "trend_" + "effects_" + usemodelstr + "_" + str(fsyear) + "_" + str(feyear) + "_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) 
 egplotfname =   varfolder + "/" + "trend_" + "egef_" + usemodelstr + "_" + str(fsyear) + "_" + str(feyear) + "_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) 
+egdefplotfname =   varfolder + "/" + "trend_" + "egefdef_" + usemodelstr + "_" + str(fsyear) + "_" + str(feyear) + "_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) 
+rsbcplotfname = varfolder + "/" + "trend_" + "rsbc_" + usemodelstr + "_" + str(fsyear) + "_" + str(feyear) + "_" + domain + "_" + contvarname + "_sig_" + str((siglev*100)) + "pp" + "_".join(sigmodes) 
 
 defplotfname =   "../output_plots/ag_new/" + "/" + "deforestation" + "/" + "defdiff_trend_" + "effects_" + str(fsyear) + "_" + str(feyear) + "_" + domain
 deflevplotfname =   "../output_plots/ag_new/" + "/" + "deforestation" + "/" + "deflev_trend_" + "effects_" + str(fsyear) + "_" + str(feyear) + "_" + domain
@@ -280,16 +298,21 @@ elif contvarname == "precmean":
     # colormapoverride    = "WhiteBlue"
     idropwhites = True
 elif contvarname == "outslen":
-    contlevels  = np.arange(100,250,10)
     deltalevels = np.arange(-21,21.1,3)
     eflevels = np.arange(-15,15.1,1)
     reversecolormap = True 
     reversedeltacolormap = True
     icolormapoverride   = False
     idropwhites = True
+    reversersbccolormap = False
+    irsbccolormapoverride = True
+    rsbclevels  = np.arange(120,250,10)
+    # This should have one element more than rsbclevels
+    # rsbccolormapoverride = ["red","green","blue","red","green","blue","red","green","blue","red","green","blue","red","green"]
+    rsbccolormapoverride = ["red","red","red","yellow","yellow","yellow","yellow","yellow","yellow","darkgreen","darkgreen","darkgreen","darkgreen","darkgreen"]
 # # outoday
 elif contvarname == "outoday":
-    contlevels  = np.arange(30,150,10)
+    rsbclevels  = np.arange(30,150,10)
     deltalevels = np.arange(-20,20.1,)
     # eflevels = np.arange(-3,3.1,0.25)
     eflevels = np.arange(-15,15.1,1)
@@ -299,7 +322,7 @@ elif contvarname == "outoday":
     colormapoverride    = "WhiteBlue"
 # # outeday
 elif contvarname == "outeday":
-    contlevels  = np.arange(240,360,10)
+    rsbclevels  = np.arange(240,360,10)
     deltalevels = np.arange(-20,20.1,)
     # eflevels = np.arange(-3,3.1,0.25)
     eflevels = np.arange(-15,15.1,1)
@@ -450,6 +473,11 @@ def str_suf_rem_and_mask(strlst, suf):
     rx = re.compile("(.*)"+suf+"$")
     tuplist = [(rx.sub("\g<1>",i), rx.match(i) is not None) for i in strlst]
     return(tuple([list(i) for i in  zip(*tuplist)]))
+
+def interp_grid_like(inds, refarr, method = "nearest"):
+    outds = inds.interp(lat=refarr["lat"], lon=refarr["lon"], method=method)
+    return(outds)
+
 
 # Splits a dataset that has means and variances coded by name. 
 # e.g. the mean of variable X is in variable X and it's variance is in X_val
@@ -772,6 +800,18 @@ if isrs:
         rsbcds = rsbcds.where(missmask)
         # rsbc = rsbc.where(brmask == 1)
 
+if contvarname == "outslen":
+    rsbcds[contvarname].attrs["long_name"] = "Bias-corrected rainy season length"
+    rsbcds[contvarname].attrs["units"] = "days"
+elif contvarname == "outoday":
+    rsbcds[contvarname].attrs["long_name"] = "Bias-corrected rainy season onset day"
+    rsbcds[contvarname].attrs["units"] = "DOY"
+elif contvarname == "outeday":
+    rsbcds[contvarname].attrs["long_name"] = "Bias-corrected rainy season end day"
+    rsbcds[contvarname].attrs["units"] = "DOY"
+
+
+
 # rsbc.isel(scenario=0).plot(levels = [0,150,200,250])
 # rsbc.isel(scenario=0).plot(levels = [0,150,200,250], cmap = "RdBu")
 # rsbc.plot(row = "scenario", levels = [0,150,200,250], cmap = "RdBu")
@@ -841,16 +881,25 @@ if idefplots:
 #%% Read regions
 if ireadregions:
     regions = xr.open_dataarray(regfname).interp_like(deltads, method = "nearest").rename("region")
+    states = xr.open_dataarray(statefname).interp_like(deltads, method = "nearest").rename("state")
 
 if "time" in regions.coords:
     regions = regions.squeeze("time", drop=True)
+if "time" in states.coords:
+    states = states.squeeze("time", drop=True)
 
 regcodes = pd.read_csv(regcodesfname).set_index("code").T.to_dict("list")
 regcodes = {i:regcodes[i][0] for i in regcodes.keys()}
 
+statecodes = pd.read_csv(statecodesfname).set_index("code").T.to_dict("list")
+statecodes = {i:statecodes[i][0] for i in statecodes.keys()}
+
+
 #%% Read agricultural data if asked
 if ireadag:
     agdsin = xr.open_dataset(agfname).interp_like(deltads)
+    agdsin[agyieldvarname] = agdsin[agyieldvarname].where(agdsin[agareavarname+"frac"]>0.01)
+
     agshp = read_shapefile(agshpfname)
 
     if iplotag:
@@ -860,6 +909,33 @@ if ireadag:
         agres.gsEdgeColor = "green"
         agres.gsEdgeThicknessF = 6.0
 
+#%% Read Rochedo classification scenarios
+classweg = xr.open_dataset(classwegfname)["PCT_PFT"].assign_coords({"luscenario":"WEG"}).expand_dims("luscenario").rename(time="year").sel(year = [fsyear,feyear])
+classseg = xr.open_dataset(classsegfname)["PCT_PFT"].assign_coords({"luscenario":"SEG"}).expand_dims("luscenario").rename(time="year").sel(year = [fsyear,feyear])
+classfut = interp_grid_like(xr.merge([classweg,classseg]), deltads, method = "nearest")["PCT_PFT"]/100.0
+classfutfrac = classfut.sel(cod = cropclasscodes).sum("cod")
+
+# Convert area fractions to area in km2
+# Pixel area (in km2, convert to ha)
+parea = geo_utils.get_pixel_areas(classfutfrac)
+classfutarea = (classfutfrac*parea).assign_attrs({"units":"km2"}).rename(agareavarname)
+
+#%%
+# classfutfrac.sel(year=agyear).plot(row="luscenario",vmin=0,vmax=0.3)
+# agdsin["m2hareafrac"].sel(year=agyear).plot(vmin=0,vmax=0.3)
+# agdsin["shareafrac"].sel(year=agyear).plot(vmin=0,vmax=0.5)
+# agdsin["syield"].sel(year=agyear).plot(vmin=1,vmax=4)
+# agdsin["syield"].where(agdsin["syield"]sel(year=agyear).mean()
+
+classweg.sel(cod=cropclasscodes).sum("cod").groupby("year").mean(["lat","lon"]).values
+classseg.sel(cod=cropclasscodes).sum("cod").groupby("year").mean(["lat","lon"]).values
+classweg.sel(cod=[3,4]).sum("cod").groupby("year").mean(["lat","lon"]).values
+classseg.sel(cod=[3,4]).sum("cod").groupby("year").mean(["lat","lon"]).values
+# classfutarea.sel(year=agyear).sum(["lat","lon"])
+# agdsin[agareavarname].sel(year=agyear).sum()
+
+# classfutarea.plot(row="luscenario",col="year")
+# classfutarea.sum(["lat","lon"])
 
 #%% Read biome information
 if ireadbio:
@@ -949,9 +1025,9 @@ def set_common_resources():
 
     return(res)
 
-def add_fig_label(wks, plot, figcount):
+def add_fig_label(wks, plot, figcount, fontheight = 0.05):
     restext = Ngl.Resources()
-    restext.txFontHeightF = 0.05
+    restext.txFontHeightF = fontheight
     # textx = 325.5
     textx = 287.5
     texty = 4.0
@@ -1243,102 +1319,301 @@ Ngl.panel(wks,egplots,[len(scenarios),1],egpanelres)
 # print(Ngl.read_colormap_file("BlueWhiteOrangeRed"))
 
 Ngl.delete_wks(wks)
-# # %% ===================== RAINY SEASON BC PLOTS ===================================================================
-# #    =======================================================================================================
-# #    =======================================================================================================
-# eflabelstring = efds[contvarname].attrs["long_name"] + " relative to CMIP5"\
-#     " (" + efds[contvarname].attrs["units"] + ") ~C~" + futtimestr + " relative to " + histimestr + ""
-# if ifutdelta:
-#     eflabelstring = "Difference in " + efds[contvarname].attrs["long_name"] + " relative to CMIP5"\
-#         " (" + efds[contvarname].attrs["units"] + ") ~C~" + futtimestr + "-" + histimestr + ""
+# %% ===================== DEF + EG DIFFERENCES PLOTS ===================================================================
+#    =======================================================================================================
+#    =======================================================================================================
+eglabelstring = egds[contvarname].attrs["long_name"] + " (WEG-SEG)"\
+    " (" + egds[contvarname].attrs["units"] + ") ~C~" + futtimestr + " relative to " + histimestr + ""
+if ifutdelta:
+    eglabelstring = "Difference in " + egds[contvarname].attrs["long_name"] + " relative to CMIP5"\
+        " (" + egds[contvarname].attrs["units"] + ") ~C~" + futtimestr + "-" + histimestr + ""
 
+# Use same colors as effects for now, since we maybe won't use these
+eglevels = eflevels
 
-# wksres = Ngl.Resources()
-# wksres.wkHeight = 2048
-# wksres.wkWidth = 2048
-# wks = Ngl.open_wks(wks_type,efplotfname,wksres)  # Open a workstation.
+wksres = Ngl.Resources()
+wksres.wkHeight = 2048
+wksres.wkWidth = 2048
+# wks = Ngl.open_wks(wks_type,egdefplotfname,wksres)  # Open a workstation.
+wks = Ngl.open_wks("pdf",egdefplotfname,wksres)  # Open a workstation.
 
-# # Resources for reference contour/fill plots
-# efcontres = set_common_resources()
+# Resources for regerence contour/fill plots
+egcontres = set_common_resources()
 
-# efcontres.cnFillOn               = True
-# efcontres.cnLinesOn              = False
-# efcontres.cnLineLabelsOn         = False
-# efcontres.cnFillMode             = "RasterFill"
+egcontres.nglMaximize = False
 
-# efcontres.lbLabelBarOn           = False
+egcontres.cnFillOn               = True
+egcontres.cnLinesOn              = False
+egcontres.cnLineLabelsOn         = False
+egcontres.cnFillMode             = "RasterFill"
 
-# efcontres.mpOutlineBoundarySets = "NoBoundaries"
+egcontres.lbLabelBarOn           = False
 
-# scolormap = Ngl.read_colormap_file("BlueWhiteOrangeRed")
+# egcontres.mpOutlineBoundarySets = "NoBoundaries"
+# egcontres.mpOutlineBoundarySets = "National"
 
-# if idropwhites:
-#     scolormap = scolormap[(scolormap.sum(axis=1) != 4),:]
-# if reversedeltacolormap:
-#     scolormap = scolormap[::-1]
+scolormap = Ngl.read_colormap_file("BlueWhiteOrangeRed")
 
-# # efcontres.cnFillPalette           =   "BlueWhiteOrangeRed"
-# efcontres.cnFillPalette           =   scolormap
-# efcontres.cnLevelSelectionMode    =   "ExplicitLevels"
-# efcontres.cnLevels    =   eflevels
+if idropwhites:
+    scolormap = scolormap[(scolormap.sum(axis=1) != 4),:]
+if reversedeltacolormap:
+    scolormap = scolormap[::-1]
 
+# egcontres.cnFillPalette           =   "BlueWhiteOrangeRed"
+egcontres.cnFillPalette           =   scolormap
+egcontres.cnLevelSelectionMode    =   "ExplicitLevels"
+egcontres.cnLevels    =   eglevels
 
-# # Scenario Plots
-# efplots = []
-# effigstrs = []
-# scenarios = efds.scenario.values.tolist()
-# # for scen in scenarios:
-# #     for usemon in usemons:
+# Scenario Plots
+egplots = []
+egfigstrs = []
+scenarios = egds.scenario.values.tolist()
 # for scen in scenarios:
-#     seldict = {"scenario":scen}
-#     if "statmodel" in efds.coords:
-#         seldict["statmodel"] = usemodelstr
+#     for usemon in usemons:
+for scen in scenarios:
+    seldict = {"scenario":scen}
+    if "statmodel" in egds.coords:
+        seldict["statmodel"] = usemodelstr
 
-#     dssubset = efds.sel(seldict)    
-#     # dssubset = efds.sel(scenario = scen, statmodel = usemodelstr)
+    dssubset = egds.sel(seldict)    
+    # dssubset = egds.sel(scenario = scen, statmodel = usemodelstr)
 
-#     if "cont" in sigmodes:
-#         dssubset[contvarname] = dssubset[contvarname].where(dssubset[contvarname+"_pval"]<=siglev,np.nan)
+    if "cont" in sigmodes:
+        dssubset[contvarname] = dssubset[contvarname].where(dssubset[contvarname+"_pval"]<=siglev,np.nan)
 
-#     contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),efcontres)
+    contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),egcontres)
 
-#     if iplotag:
-#         add_shapefile_df_polygons(wks,contplot,agshp,agres)
+    if iplotag:
+        add_shapefile_df_polygons(wks,contplot,agshp,agres)
 
-#     add_fig_label(wks, contplot, len(efplots))
+    add_fig_label(wks, contplot, len(egplots))
 
-#     efplots.append(contplot)
-#     effigstrs.append(str(scenstrdict[scen]))
+    egplots.append(contplot)
+    # egfigstrs.append(str(scenstrdict[scen]))
+    egfigstrs.append(str(scenstrdict[scen]).split("-")[0])
 
-# efpanelres                                  = Ngl.Resources()
-# efpanelres.nglPanelFigureStrings            = effigstrs
-# efpanelres.nglPanelFigureStringsFontHeightF = 0.01
-# efpanelres.nglPanelLabelBar                 = True     # Turn on panel labelbar
-# # efpanelres.nglPanelLabelBar                 = True     # Turn on panel labelbar
-# efpanelres.nglPanelLabelBarLabelFontHeightF = 0.01    # Labelbar font height
-# efpanelres.nglPanelLabelBarHeightF          = 0.03   # Height of labelbar
-# # efpanelres.nglPanelLabelBarWidthF           = 0.700    # Width of labelbar
-# # efpanelres.nglPanelTop                      = 0.75
-# efpanelres.nglPanelBottom                      = 0.05
-# # efpanelres.nglPanelLeft                      = 0.2
+egpanelres                                  = Ngl.Resources()
+egpanelres.nglPanelFigureStrings            = egfigstrs
+egpanelres.nglPanelFigureStringsFontHeightF = 0.01
+egpanelres.nglPanelLabelBar                 = True     # Turn on panel labelbar
+# egpanelres.nglPanelLabelBar                 = True     # Turn on panel labelbar
+egpanelres.nglPanelLabelBarLabelFontHeightF = 0.01    # Labelbar font height
+egpanelres.nglPanelLabelBarHeightF          = 0.03   # Height of labelbar
+# egpanelres.nglPanelLabelBarWidthF           = 0.700    # Width of labelbar
+# egpanelres.nglPanelTop                      = 0.75
+egpanelres.nglPanelBottom                      = 0.05
+# egpanelres.nglPanelLegt                      = 0.2
 
-# # efpanelres.nglMaximize = True
-# # efpanelres.nglFrame = False
+# egpanelres.nglMaximize = True
+# egpanelres.nglFrame = False
 
-# efpanelres.lbTitleString          =   eflabelstring
-# efpanelres.lbTitlePosition          =   "Bottom"
-# efpanelres.lbTitleFontHeightF          =   0.01
-# efpanelres.lbJustification          = "TopCenter"
+egpanelres.lbTitleString          =   eglabelstring
+egpanelres.lbTitlePosition          =   "Bottom"
+egpanelres.lbTitleFontHeightF          =   0.01
+egpanelres.lbJustification          = "TopCenter"
 
-# if addsiglabel:
-#     efpanelres.lbTitleString = efpanelres.lbTitleString + "~C~Showing differences significant at " + str(siglev*100) + "%"
+if addsiglabel:
+    egpanelres.lbTitleString = egpanelres.lbTitleString + "~C~Showing differences significant at " + str(siglev*100) + "%"
 
-# Ngl.panel(wks,efplots,[2,len(scenarios)/2],efpanelres)
 
-# # print(Ngl.retrieve_colormap(wks))
-# # print(Ngl.read_colormap_file("BlueWhiteOrangeRed"))
 
-# Ngl.delete_wks(wks)
+
+# =================================================================== Deforestation part
+
+egdeforres = set_common_resources()
+egdeforres = reset_coord_resources_ref(egdeforres, cmpdefdelta)
+
+egdeforres.nglMaximize               = True
+
+egdeforres.cnFillOn               = True
+egdeforres.cnLinesOn              = False
+egdeforres.cnLineLabelsOn         = False
+egdeforres.cnFillMode             = "RasterFill"
+
+deforlabelstring = "Difference in "+str(defrefyear)+"-"+str(defpyear)+" natural vegetation loss from RCP (p.p.)"
+
+egdeforres.lbLabelBarOn           = False
+# egdeforres.lbLabelBarOn           = True
+egdeforres.lbOrientation          = "horizontal"
+egdeforres.lbTitleString          = deforlabelstring
+egdeforres.cnLevelSelectionMode    =   "ExplicitLevels"
+
+egdeforcolormap = Ngl.read_colormap_file("MPL_BrBG")[::-1]
+egdeforres.cnFillPalette           =   egdeforcolormap
+egdeforres.cnLevels    =   np.array([ -40, -30, -20, -10, -5, 0, 5, 10, 20, 30, 40])
+
+egdefplots = []
+egdeffigstrs = []
+scenarios = egdefdelta.scenario.values.tolist()
+# for scen in scenarios:
+#     for usemon in usemons:
+for scen in scenarios:
+    # contres.tiMainString = usemon
+    dssubset = egdefdelta.sel(scenario = scen)
+    dssubset = dssubset.where(np.abs(dssubset) > 1e-12) # A low threshold to eliminate off-country values
+    egdefplot = Ngl.contour_map(wks,dssubset.to_masked_array(),egdeforres)
+
+    if iplotbio:
+        add_shapefile_df_polygons(wks,egdefplot,bioshp, biores)
+
+        if iaddsumdef:
+            restext = Ngl.Resources()
+            restext.txFontHeightF = 0.025
+            # textx = 322.5
+            textx = 321.5
+            texty = -28
+
+            defdict = sumdefegdiff.query("scenario==@scen").set_index("biomestr").to_dict()["PCT_PFT"]
+            textstr = "~C~".join("{} : {:.2f} pp".format(k, v) for k, v in defdict.items())
+            
+            Ngl.add_text(wks,egdefplot,textstr,textx,texty, restext)
+
+    add_fig_label(wks, egdefplot, 2, fontheight=0.08)
+
+    egdefplots.append(egdefplot)
+    egdeffigstrs.append("WEG-SEG")
+    # egdeffigstrs.append(str(scenstrdict[scen]))
+
+egdefpanelres                                  = Ngl.Resources()
+egdefpanelres.nglPanelFigureStrings            = egdeffigstrs
+egdefpanelres.nglPanelFigureStringsFontHeightF = 0.01
+egdefpanelres.nglPanelLabelBar                 = True     # Turn on panel labelbar
+egdefpanelres.nglPanelLabelBarLabelFontHeightF = 0.01    # Labelbar font height
+egdefpanelres.nglPanelLabelBarHeightF          = 0.03   # Height of labelbar
+
+egdefpanelres.nglPanelBottom                   = 0.05
+
+egdefpanelres.lbTitleString                    =   deforlabelstring
+egdefpanelres.lbTitlePosition                  =   "Bottom"
+egdefpanelres.lbTitleFontHeightF               =   0.01
+egdefpanelres.lbJustification                  = "TopCenter"
+
+# ============================================ Both panels go here
+egpanelres.nglFrame          =   False
+# egpanelres.nglDraw          =   False
+egpanelres.nglMaximize          =   False
+egpanelres.nglPanelTop                    = 1.0
+egpanelres.nglPanelBottom                   = 0.4
+# egpanelres.nglPanelLeft                    = 0.0
+# egpanelres.nglPanelRight                   = 0.5
+Ngl.panel(wks,egplots,[len(scenarios),1],egpanelres)
+
+egdefpanelres.nglPanelTop                      = 0.35
+egdefpanelres.nglPanelBottom                   = 0.05
+# egdefpanelres.nglPanelLeft                    = 0.5
+# egdefpanelres.nglPanelRight                   = 1.0
+egdefpanelres.nglFrame          =   False
+# egdefpanelres.nglDraw          =   False
+egdefpanelres.nglMaximize          =   False
+# Ngl.panel(wks,egdefplots,[len(scenarios),1],egdefpanelres)
+Ngl.panel(wks,[egdefplots[0]],[1,1],egdefpanelres)
+
+Ngl.frame(wks)
+# print(Ngl.retrieve_colormap(wks))
+# print(Ngl.read_colormap_file("BlueWhiteOrangeRed"))
+
+Ngl.delete_wks(wks)
+# %% ===================== RAINY SEASON BC PLOTS ===================================================================
+#    =======================================================================================================
+#    =======================================================================================================
+if isrs:
+    rsbclabelstring = rsbcds[contvarname].attrs["long_name"] + "(" + rsbcds[contvarname].attrs["units"] + ")"
+
+
+    wksres = Ngl.Resources()
+    wksres.wkHeight = 2048
+    wksres.wkWidth = 2048
+    wks = Ngl.open_wks(wks_type,rsbcplotfname,wksres)  # Open a workstation.
+
+    # Resources for rrsbcerence contour/fill plots
+    rsbccontres = set_common_resources()
+
+    rsbccontres.cnFillOn               = True
+    rsbccontres.cnLinesOn              = False
+    rsbccontres.cnLineLabelsOn         = False
+    rsbccontres.cnFillMode             = "RasterFill"
+
+    rsbccontres.lbLabelBarOn           = False
+
+    rsbccontres.mpOutlineBoundarySets = "NoBoundaries"
+
+    scolormap = Ngl.read_colormap_file("BlueWhiteOrangeRed")
+    if irsbccolormapoverride:
+        if isinstance(rsbccolormapoverride,str):
+            scolormap = Ngl.read_colormap_file(rsbccolormapoverride)
+        else:
+            scolormap = rsbccolormapoverride
+
+    # if idropwhites:
+    #     scolormap = scolormap[(scolormap.sum(axis=1) != 4),:]
+    if reversersbccolormap:
+        scolormap = scolormap[::-1]
+
+    # rsbccontres.cnFillPalette           =   "BlueWhiteOrangeRed"
+    rsbccontres.cnFillPalette           =   scolormap
+    rsbccontres.cnLevelSelectionMode    =   "ExplicitLevels"
+    rsbccontres.cnLevels    =   rsbclevels
+
+
+    # Scenario Plots
+    rsbcplots = []
+    rsbcfigstrs = []
+    scenarios = rsbcds.scenario.values.tolist()
+    # for scen in scenarios:
+    #     for usemon in usemons:
+    for scen in scenarios:
+        seldict = {"scenario":scen}
+        if "statmodel" in rsbcds.coords:
+            seldict["statmodel"] = usemodelstr
+
+        dssubset = rsbcds.sel(seldict)    
+        # dssubset = rsbcds.sel(scenario = scen, statmodel = usemodelstr)
+
+        # if "cont" in sigmodes:
+        #     dssubset[contvarname] = dssubset[contvarname].where(dssubset[contvarname+"_pval"]<=siglev,np.nan)
+
+        contplot = Ngl.contour_map(wks,dssubset[contvarname].to_masked_array(),rsbccontres)
+
+        if iplotag:
+            add_shapefile_df_polygons(wks,contplot,agshp,agres)
+
+        add_fig_label(wks, contplot, len(rsbcplots))
+
+        rsbcplots.append(contplot)
+        rsbcfigstrs.append(str(scenstrdict[scen]))
+
+    rsbcpanelres                                  = Ngl.Resources()
+    rsbcpanelres.nglPanelFigureStrings            = rsbcfigstrs
+    rsbcpanelres.nglPanelFigureStringsFontHeightF = 0.01
+    rsbcpanelres.nglPanelLabelBar                 = True     # Turn on panel labelbar
+    # rsbcpanelres.nglPanelLabelBar                 = True     # Turn on panel labelbar
+    rsbcpanelres.nglPanelLabelBarLabelFontHeightF = 0.01    # Labelbar font height
+    rsbcpanelres.nglPanelLabelBarHeightF          = 0.03   # Height of labelbar
+    # rsbcpanelres.nglPanelLabelBarWidthF           = 0.700    # Width of labelbar
+    # rsbcpanelres.nglPanelTop                      = 0.75
+    rsbcpanelres.nglPanelBottom                      = 0.05
+    # rsbcpanelres.nglPanelLrsbct                      = 0.2
+
+    # rsbcpanelres.nglMaximize = True
+    # rsbcpanelres.nglFrame = False
+
+    rsbcpanelres.lbTitleString          =   rsbclabelstring
+    rsbcpanelres.lbTitlePosition          =   "Bottom"
+    rsbcpanelres.lbTitleFontHeightF          =   0.01
+    rsbcpanelres.lbJustification          = "TopCenter"
+
+    # if addsiglabel:
+    #     rsbcpanelres.lbTitleString = rsbcpanelres.lbTitleString + "~C~Showing differences significant at " + str(siglev*100) + "%"
+
+    Ngl.panel(wks,rsbcplots,[2,len(scenarios)/2],rsbcpanelres)
+
+
+
+
+    # print(Ngl.retrieve_colormap(wks))
+    # print(Ngl.read_colormap_file("BlueWhiteOrangeRed"))
+
+    Ngl.delete_wks(wks)
 
 #%% ==== DEFORESTATION CMIP DIFFERENCE PLOTS ================================================
 if idefplots:
@@ -1488,11 +1763,12 @@ if idefplots:
             if iaddsumdef:
                 restext = Ngl.Resources()
                 restext.txFontHeightF = 0.03
-                textx = 321.5
-                texty = -27
+                # textx = 321.5
+                textx = 320.5
+                texty = -28
 
                 defdict = sumdeflev.query("scenario==@scen").set_index("biomestr").to_dict()[pftvarname]
-                textstr = "~C~".join("{} : {:.2f}".format(k, v) for k, v in defdict.items())
+                textstr = "~C~".join("{} : {:.1f} p.p.".format(k, v) for k, v in defdict.items())
                 
                 Ngl.add_text(wks,deflevplot,textstr,textx,texty, restext)
 
@@ -1536,6 +1812,7 @@ deltads["ciup"] = deltads[contvarname] + ciupz*(deltads[contvarname+"_var"]**0.5
 dsall = drop_unused(deltads).merge(defarr)
 dsall = dsall.merge(agdsin.sel(year=agyear, drop=True))
 dsall = dsall.merge(regions)
+dsall = dsall.merge(states)
 
 dsall["scenario"] = [scenstrdict[i] for i in list(dsall["scenario"].data)]
 # Convert to DataFrame
@@ -1543,6 +1820,10 @@ dfall = dsall.to_dataframe().dropna(how="all").reset_index()
 dfall = dfall.replace({"region":regcodes})
 dfall["region"] = dfall["region"].loc[dfall["region"].isin(useregs)]
 dfall = dfall.replace({"region":reglongnamesdict})
+dfall = dfall.replace({"state":statecodes})
+dfall["state"] = dfall["state"].loc[dfall["state"].isin(usestates)]
+dfall = dfall.replace({"state":statelongnamesdict})
+
 # dfall["rcpscen"] = dfall["scenario"].str[:6]
 # dfall["luscen"] = dfall["scenario"].str[:6]
 dfall["rcpscen"] = dfall["scenario"].str[:6]
@@ -1552,12 +1833,18 @@ dfall["luscen"] = dfall["scenario"].str[7:]
 egdsall = drop_unused(egds).merge(egdefdelta)
 egdsall = egdsall.merge(agdsin.sel(year=agyear, drop=True))
 egdsall = egdsall.merge(regions)
+egdsall = egdsall.merge(states)
 egdsall["scenario"] = [scenstrdict[i] for i in list(egdsall["scenario"].data)]
 
 egdfall = egdsall.to_dataframe().dropna(how="all").reset_index()
 egdfall = egdfall.replace({"region":regcodes})
 egdfall["region"] = egdfall["region"].loc[egdfall["region"].isin(useregs)]
 egdfall = egdfall.replace({"region":reglongnamesdict})
+
+egdfall = egdfall.replace({"state":statecodes})
+egdfall["state"] = egdfall["state"].loc[egdfall["state"].isin(usestates)]
+egdfall = egdfall.replace({"state":statelongnamesdict})
+
 egdfall["rcpscen"] = egdfall["scenario"].str[:6]
 egdfall["luscen"] = egdfall["scenario"].str[7:]
 
@@ -1638,38 +1925,58 @@ dumplot = dumplot + p9.geom_hline(p9.aes(yintercept=0.0), color = "gray", linety
 # dumplot = dumplot + p9.theme(legend_background=p9.element_blank(), legend_position=(0.28,0.27))
 print(dumplot)
 p9.ggsave(dumplot, varfolder + "/plot_regions_"+regtypestr+"_"+contvarname+"_areaweights")
+p9.ggsave(dumplot, varfolder + "/plot_regions_"+regtypestr+"_"+contvarname+"_areaweights.pdf",format="pdf")
 
-#%% By region, NO weights
-groupvars = ["region","scenario"]
+
+
+# %%
+#%% By state, area weights
+groupvars = ["state","scenario"]
 if iyield: groupvars.extend(["statmodel"])
 
-dumdf = dfall.groupby(groupvars).mean()
-dumdf = pd.DataFrame(dumdf)#.reset_index()
+# dumdf = dfall.groupby(groupvars).apply(lambda dfx: (dfx[contvarname] * dfx[agareavarname]).sum() / dfx[agareavarname].sum())
+# dumdf = pd.DataFrame(dumdf.rename(contvarname))#.reset_index()
 # dumdf = dumdf.reset_index()
-# dumdf = aggregate_weighted(dfall, groupvars, agareavarname)
+dumdf = aggregate_weighted(dfall, groupvars, agareavarname)
 
 printdf = dumdf
 if iyield: printdf = printdf.query("statmodel=='Ensemble'") 
+printdf = printdf[[contvarname]]
 printdf.reset_index("scenario").pivot(columns="scenario")
 print(printdf)
 
 aesdict = {"y" : contvarname, "x" : "scenario"}
-pointkwargs = {"size" : 5}
+erraesdict = {"ymin" : "cilo","ymax" : "ciup","x" : "scenario"}
+pointkwargs = {}
 if iyield: 
+    # aesdict.update({"color" : "statmodel", "shape" : "statmodel", "size" : "statmodel", "group" : "statmodel"})
+    # aesdict.update({"color" : "statmodel", "size" : "statmodel"})
     aesdict.update({"color" : "statmodel", "shape" : "statmodel"})
+    erraesdict.update({"color" : "statmodel"})
+    pointkwargs.update({"size" : 5})
 else:
-    pointkwargs.update({"shape" : "d"})
+    pointkwargs.update({"shape" : "d", "size" : 5})
 
+posd = p9.position_dodge(0.0)
 dumplot = (
-    p9.ggplot(dumdf.dropna().reset_index()) +
-    p9.geom_point(p9.aes(**aesdict), **pointkwargs) +
-    p9.geom_errorbar(p9.aes(ymin="cilo",ymax="ciup",x="scenario")) + 
-    p9.facet_wrap("region") +
-    p9.xlab("") + p9.ylab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change ("+deltads[contvarname].attrs["units"]+"no weights)") +
+    # p9.ggplot(dumdf.dropna().reset_index()) +
+    # p9.geom_point(p9.aes(**aesdict), **pointkwargs) +
+    p9.ggplot(dumdf.dropna().reset_index(), p9.aes(**aesdict)) +
+    p9.geom_point(**pointkwargs, position = posd) +
+    p9.geom_errorbar(p9.aes(**erraesdict),
+        width=0.4,size=0.8, position = posd) + 
+    # p9.geom_errorbar(p9.aes(ymin="cilo",ymax="ciup",x="scenario"),color="statmodel"),
+    #     width=0.4,size=0.8, position = posd) + 
+    p9.facet_wrap("state") +
+    p9.xlab("") + 
+    p9.ylab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change ("+deltads[contvarname].attrs["units"]+", area weighted)") +
     p9.theme_classic()
 )
+
 if iyield: 
-    dumplot = dumplot + p9.scale_color_manual(statmodel_colors) + p9.scale_shape_manual(statmodel_shapes) #+
+    dumplot = (dumplot + p9.scale_color_manual(statmodel_colors) + 
+        p9.scale_shape_manual(statmodel_shapes))# +
+        # p9.scale_size_manual(statmodel_sizes))
     dumplot = dumplot + p9.labs(color="Yield model", shape="Yield model") 
 # Rotate legends
 dumplot = dumplot + p9.theme(axis_text_x = p9.element_text(angle = 45, vjust = 1.0, hjust=1))
@@ -1677,82 +1984,15 @@ dumplot = dumplot + p9.theme(axis_text_x = p9.element_text(angle = 45, vjust = 1
 dumplot = dumplot + p9.geom_hline(p9.aes(yintercept=0.0), color = "gray", linetype = "dashed")
 # dumplot = dumplot + p9.theme(legend_background=p9.element_blank(), legend_position=(0.28,0.27))
 print(dumplot)
-p9.ggsave(dumplot, varfolder + "/plot_regions_"+regtypestr+"_"+contvarname+"_noweights")
+p9.ggsave(dumplot, varfolder + "/plot_states_"+regtypestr+"_"+contvarname+"_areaweights")
 
-#%% Grand average, area weights TRANPOSED
-
-groupvars = ["scenario"]
-if iyield: groupvars.extend(["statmodel"])
-
-dumdf = aggregate_weighted(dfall, groupvars, agareavarname)
-
-printdf = dumdf
-if iyield: printdf = printdf.query("statmodel == 'Ensemble'") 
-print(printdf)
-
-aesdict = {"y" : contvarname, "x" : "scenario"}
-pointkwargs = {"size" : 5}
-if iyield: 
-    aesdict.update({"color" : "statmodel", "shape" : "statmodel"})
-    pointkwargs.update({"size" : 10})
-
-else:
-    pointkwargs.update({"shape" : "D"})
-# if iyield: 
-#     aesdict.update({"color" : "statmodel", "shape" : "statmodel"})
-#     pointsize = 10
-
-dumplot = (
-    p9.ggplot(dumdf.dropna().reset_index()) +
-    p9.geom_point(p9.aes(**aesdict), **pointkwargs) +
-    p9.geom_errorbar(p9.aes(ymin="cilo",ymax="ciup",x="scenario")) + 
-    p9.ylab("") + p9.xlab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change ("+deltads[contvarname].attrs["units"]+", area weighted)") +
-    p9.theme_classic()
-
-)
-if iyield: 
-    dumplot = dumplot + p9.scale_color_manual(statmodel_colors) + p9.scale_shape_manual(statmodel_shapes) #+
-    dumplot = dumplot + p9.labs(color="Yield model", shape="Yield model") 
-
-print(dumplot)
-
-#%% Grand average, production weights
-groupvars = ["scenario"]
-if iyield: groupvars.extend(["statmodel"])
-dumdf = dfall.groupby(groupvars).apply(lambda dfx: (dfx[contvarname] * dfx[agprodvarname]).sum() / dfx[agprodvarname].sum())
-dumdf = pd.DataFrame(dumdf.rename(contvarname))
-
-printdf = dumdf
-if iyield: printdf = printdf.query("statmodel == 'Ensemble'") 
-print(printdf)
-
-aesdict = {"x" : contvarname, "y" : "scenario"}
-pointkwargs = {"size" : 5}
-if iyield: 
-    aesdict.update({"color" : "statmodel", "shape" : "statmodel"})
-    pointkwargs.update({"size" : 10})
-
-else:
-    pointkwargs.update({"shape" : "d"})
-# if iyield: 
-#     aesdict.update({"color" : "statmodel", "shape" : "statmodel"})
-#     pointsize = 10
-
-dumplot = (
-    p9.ggplot(dumdf.dropna().reset_index()) +
-    p9.geom_point(p9.aes(**aesdict), **pointkwargs) +
-    p9.ylab("") + p9.xlab(cropstrdict[crop]+" average "+varshortnamedict[contvarname]+" change ("+deltads[contvarname].attrs["units"]+", area weighted)") +
-    p9.theme_classic()
-
-)
-if iyield: 
-    dumplot = dumplot + p9.scale_color_manual(statmodel_colors) + p9.scale_shape_manual(statmodel_shapes) #+
-    dumplot = dumplot + p9.labs(color="Yield model", shape="Yield model") 
-
-print(dumplot)
-p9.ggsave(dumplot, varfolder + "/plot_aggregated_"+contvarname+"_prodweights")
-# %%
+#%%
 # ========================== CORRELATION PLOTS =============================
+# By region
+
+# df = dfuse.groupby(groupvars).get_group(('RCP8.5', 'Amazonia'))
+# xvarname="PCT_PFT"
+# yvarname=contvarname
 def regression_string_fit(df, yvarname, xvarname):
     model = ols(yvarname + "~" +xvarname, data = df)
     results = model.fit()
@@ -1760,8 +2000,13 @@ def regression_string_fit(df, yvarname, xvarname):
     # b1str = "{0:.2g}".format(results.params[xvarname])
     b1str = ["- ", "+ "][results.params[xvarname] > 0] + "{0:.2g}".format(abs(results.params[xvarname]))
     r2str = "{0:.2g}".format(results.rsquared)
+    if results.pvalues[1] > siglev:
+        pvalstr = "={0:.2g}".format(results.pvalues[1])
+    else:
+        pvalstr = "<{0:.2g}".format(siglev)
+
     # regstr = "R2: " + r2str + "\n" + b0str + " + " + b1str + "x" 
-    regstr = "R2: " + r2str + "\n" + b0str + " " + b1str + "x" 
+    regstr = "R2: " + r2str + "\n" + b0str + " " + b1str + "x" +"\n" + "p" + pvalstr
     return(regstr)
 
 groupvars = ["rcpscen","region"]
@@ -1808,8 +2053,78 @@ dumplot = (
 print(dumplot)
 p9.ggsave(dumplot, varfolder + "/plot_regressions_"+"_".join(groupvars) + ".png")
 
+#%%
+# By state
+
+# df = dfuse.groupby(groupvars).get_group(('RCP8.5', 'Amazonia'))
+# xvarname="PCT_PFT"
+# yvarname=contvarname
+def regression_string_fit(df, yvarname, xvarname):
+    model = ols(yvarname + "~" +xvarname, data = df)
+    results = model.fit()
+    b0str = "{0:.2g}".format(results.params["Intercept"])
+    # b1str = "{0:.2g}".format(results.params[xvarname])
+    b1str = ["- ", "+ "][results.params[xvarname] > 0] + "{0:.2g}".format(abs(results.params[xvarname]))
+    r2str = "{0:.2g}".format(results.rsquared)
+    if results.pvalues[1] > siglev:
+        pvalstr = "={0:.2g}".format(results.pvalues[1])
+    else:
+        pvalstr = "<{0:.2g}".format(siglev)
+
+    # regstr = "R2: " + r2str + "\n" + b0str + " + " + b1str + "x" 
+    regstr = "R2: " + r2str + "\n" + b0str + " " + b1str + "x" +"\n" + "p" + pvalstr
+    return(regstr)
+
+groupvars = ["rcpscen","state"]
+# groupvars = ["scenario","state"]
+
+# # Faceting and add grouping for yield plots
+# if iyield:
+#     # facetstr = "+".join(groupvars)+"~statmodel"
+#     facet_function = p9.facet_grid("statmodel ~ state")
+#     groupvars = groupvars + ["statmodel"]
+# # else:
+#     facet_function = p9.facet_grid("~".join(groupvars))
+
+dfuse = dfall
+if iyield:
+    dfuse = dfall.query("statmodel=='Ensemble'")
+
+# Regressions
+dfanno = dfuse.groupby(groupvars).apply(regression_string_fit, contvarname, pftvarname).rename("equation").reset_index()
+ypos = dfuse[contvarname].max()
+xpos = dfuse[pftvarname].min()
+
+dumplot = (
+    p9.ggplot(dfuse.dropna(how="any",subset=[contvarname,pftvarname,"state"]),
+    ) + 
+    # p9.ggtitle(contvarname) + 
+    p9.aes(x="PCT_PFT", y=contvarname, color="state") +
+    p9.geom_point() +
+    # p9.coords.coord_fixed() +
+    # p9.facet_wrap("~" + "+".join(groupvars)) +
+    # p9.facet_grid("~".join(groupvars)) +
+    p9.facet_grid(groupvars[1]+"~"+groupvars[0]) +
+    # facet_function +
+    p9.xlab(deflevlabelstring) +
+    p9.ylab(deltads[contvarname].attrs["long_name"] + " (" + deltads[contvarname].attrs["units"] + ")") +
+    p9.geom_smooth(method = "lm", se = True, show_legend = False) +
+    p9.theme_classic() +
+    p9.theme(legend_position = "none") +
+    p9.geom_text(p9.aes(x=xpos,y=ypos,label="equation"), 
+        va = "top",
+        ha = "left",
+        color="black", 
+        data = dfanno)
+)
+print(dumplot)
+p9.ggsave(dumplot, varfolder + "/plot_regressions_"+"_".join(groupvars) + ".png",
+    width = 6,height=12
+)
+
 # %%
 # ================================= CORRELATION EG PLOTS ============================
+# By region
 groupvars = ["rcpscen","region"]
 # groupvars = ["scenario","region"]
 
@@ -1855,5 +2170,188 @@ dumplot = (
 )
 print(dumplot)
 p9.ggsave(dumplot, varfolder + "/plot_egregressions_"+"_".join(groupvars) + ".png")
+# %%
+# By state
+groupvars = ["rcpscen","state"]
+# groupvars = ["scenario","state"]
+
+# # Faceting and add grouping for yield plots
+# if iyield:
+#     # facetstr = "+".join(groupvars)+"~statmodel"
+#     facet_function = p9.facet_grid("statmodel ~ state")
+#     groupvars = groupvars + ["statmodel"]
+# # else:
+#     facet_function = p9.facet_grid("~".join(groupvars))
+
+# dfuse = dfall
+del(dfuse)
+dfuse = copy.deepcopy(egdfall)
+if iyield:
+    dfuse = dfuse.query("statmodel=='Ensemble'")
+
+# Regressions
+dfanno = dfuse.groupby(groupvars).apply(regression_string_fit, contvarname, pftvarname).rename("equation").reset_index()
+ypos = dfuse[contvarname].max()
+xpos = dfuse[pftvarname].min()
+
+dumplot = (
+    p9.ggplot(dfuse.dropna(how="any",subset=[contvarname,pftvarname,"state"]),
+    ) + 
+    # p9.ggtitle(contvarname) + 
+    p9.aes(x="PCT_PFT", y=contvarname, color="state") +
+    p9.geom_point() +
+    # p9.coords.coord_fixed() +
+    # p9.facet_wrap("~" + "+".join(groupvars)) +
+    # p9.facet_grid("~".join(groupvars)) +
+    p9.facet_grid(groupvars[1]+"~"+groupvars[0]) +
+    # facet_function +
+    p9.xlab("Diff. in "+deflevlabelstring) +
+    p9.ylab(egds[contvarname].attrs["long_name"] + " (" + egds[contvarname].attrs["units"] + ")") +
+    p9.geom_smooth(method = "lm", se = True, show_legend = False) +
+    p9.theme_classic() +
+    p9.theme(legend_position = "none") +
+    p9.geom_text(p9.aes(x=xpos,y=ypos,label="equation"), 
+        va = "top",
+        ha = "left",
+        color="black", 
+        data = dfanno)
+)
+print(dumplot)
+p9.ggsave(dumplot, varfolder + "/plot_egregressions_"+"_".join(groupvars) + ".png",
+    width = 6,height=12
+)
+
+
+#%% =========================================== PROJECTIONS ==============================================
+if not iyield:
+    sys.exit(0)
+
+# Read and average prices (consumer prices per ton)
+pricedf = pd.read_csv("../auxdata/FAOSTAT_data_5-14-2021.csv")[["Year",crop]].rename({crop:"price","Year":"year"},axis=1).set_index("year")
+price = np.array(pricedf.loc[slice(2010,2016)].mean())
+price = float(price)
+
+# Calculate confidence intervals
+ciloz = scipy.stats.norm.ppf(0.5-(cival/2))
+ciupz = scipy.stats.norm.ppf(0.5+(cival/2))
+deltads["cilo"] = deltads[contvarname] + ciloz*(deltads[contvarname+"_var"]**0.5)
+deltads["ciup"] = deltads[contvarname] + ciupz*(deltads[contvarname+"_var"]**0.5)
+
+#%%
+# Use yields from agyear (2016) but area must be from fsyear (2012) because of the trend period
+#FIXME: We are using all data for agyear here, maybe would be best to average over a period? 
+agdsagyear = agdsin.sel(year = agyear)
+agdsyear = agdsin.sel(year = fsyear)
+
+# Calculate (area weighted) average yield in fsyear, and fill areas where there was < 1% soy area with it
+avgyield = agdsagyear[agyieldvarname].weighted(agdsyear[agareavarname].fillna(0)).mean(["lat","lon"]).values.item()
+# We need to drop year because we'll assign it to the future years too
+agyield = agdsin[agyieldvarname].sel(year = agyear).drop_vars("year").fillna(avgyield)
+
+# Get a luscenario for agdsin
+usevars = [agareavarname] #, agyieldvarname] set yields with the filled ones later
+useagds = agdsyear[usevars].assign_coords({"luscenario":"HIS","year":agdsyear["year"].values}).expand_dims(["luscenario","year"])
+# useagds.broadcast_like(classfutarea)
+
+# Merge and add yields
+# allagds = xr.merge([useagds,classfutarea,agyield])
+allagds = xr.merge([classfutarea,agyield])
+allagdf = allagds.to_dataframe()
+
+# Print total areas
+allagds[agareavarname].sum(["lat","lon"]).to_dataframe()
+
+# allagds["sharea"].plot(row="luscenario", col= "year")
+
+allagdf.assign(tprod = allagdf[agareavarname]*allagdf[agyieldvarname]*100).groupby(["luscenario","year"]).sum()
+#%%
+# Merge all level datasets
+dsall = drop_unused(deltads).merge(defarr)
+dsall = dsall.merge(regions).merge(states)
+dsall["scenario"] = [scenstrdict[i] for i in list(dsall["scenario"].data)]
+
+# Convert to DataFrame
+dfall = dsall.to_dataframe().dropna(how="all").reset_index()
+dfall = dfall.replace({"region":regcodes})
+dfall["region"] = dfall["region"].loc[dfall["region"].isin(useregs)]
+dfall = dfall.replace({"region":reglongnamesdict})
+dfall = dfall.replace({"state":statecodes})
+dfall["state"] = dfall["state"].loc[dfall["state"].isin(usestates)]
+dfall = dfall.replace({"state":statelongnamesdict})
+
+# dfall["rcpscen"] = dfall["scenario"].str[:6]
+# dfall["luscen"] = dfall["scenario"].str[:6]
+dfall["rcpscenario"] = dfall["scenario"].str[:6]
+dfall["luscenario"] = dfall["scenario"].str[7:]
+
+# Filter out the CMIP scenario
+dfall = dfall[dfall["luscenario"] != "CMIP"]
+
+# Use only the Ensemble model for now
+dfall = dfall[dfall["statmodel"] == "Ensemble"]
+
+#%% ============ Actual calculations
+projdf = pd.merge(dfall.set_index(["lat","lon","luscenario"]), allagdf, how="outer",  left_index=True,right_index=True)
+# Projected yields
+projdf = projdf.assign(yieldprojef = projdf[agyieldvarname]*(1+(projdf["agestimate_perc"]/100.0)))
+
+# Calculate total production with and without the climate effect. The 100 converts km2 to ha
+projdf = projdf.assign(prodprojef = projdf["yieldprojef"]*projdf[agareavarname]*100)
+projdf = projdf.assign(prodprojnoef = projdf[agyieldvarname]*projdf[agareavarname]*100)
+
+# Summaries
+# projdf = projdf[projdf["region"].isin([reglongnamesdict[i] for i in useregs])]
+projdf = projdf[projdf["state"].isin([statelongnamesdict[i] for i in usestates])]
+# groupvars = ["region","statmodel","rcpscenario","luscenario","year"]
+groupvars = ["state","statmodel","rcpscenario","luscenario","year"]
+# groupvars = ["statmodel","rcpscenario","luscenario","year"]
+meanprojdf = projdf.groupby(groupvars).mean()
+sumprojdf = projdf.groupby(groupvars).sum()
+
+# Add yield means (weighted)
+wmeandelta = projdf.groupby(groupvars).apply(lambda dfx: (dfx[contvarname] * dfx[agareavarname]).sum() / dfx[agareavarname].sum())
+# wmeandelta = projdf.groupby(groupvars).apply(lambda dfx: (dfx[contvarname] * dfx[agareavarname]).sum() / dfx[agareavarname].sum())
+sumprojdf[contvarname] = wmeandelta
+# sumprojdf
+# meanprojdf
+# Add a column with the production of the reference year for calculating changes
+sumprojdfref = sumprojdf.xs(fsyear,level="year")["prodprojnoef"].rename("prodref")
+sumprojdfrefarea = sumprojdf.xs(fsyear,level="year")[agareavarname].rename("arearef")
+
+sumprojdf = sumprojdf.merge(sumprojdfref,left_index=True,right_index=True)
+sumprojdf = sumprojdf.merge(sumprojdfrefarea,left_index=True,right_index=True)
+# Now that we have the reference production in a column we dont need 2012
+sumprojdf = sumprojdf.xs(feyear,level="year")#[["prodprojef","prodprojnoef","prodref",contvarname]]
+
+# sumprojdf[["prodprojnoef","prodprojef"]]*16.66*173*1e-6 # Weird units
+
+# Production changes (%)
+tabprod = 100*(sumprojdf[["prodprojnoef","prodprojef"]]/np.array(sumprojdf[["prodref"]]) - 1)
+# Area changes (%)
+tabarea = 100*(sumprojdf[[agareavarname]]/np.array(sumprojdf[["arearef"]]) - 1)
+
+# # Production changes (ratio)
+# tabprod = (sumprojdf[["prodprojnoef","prodprojef"]]/np.array(sumprojdf[["prodref"]]))
+# # Area changes (ratio)
+# tabarea = (sumprojdf[[agareavarname]]/np.array(sumprojdf[["arearef"]]))
+
+pd.merge(tabarea,tabprod,left_index=True,right_index=True).reset_index("statmodel").drop("statmodel",axis=1)
+
+# Get value changes WEG-SEG (million USD)
+sumvaldf = sumprojdf[["prodprojnoef","prodprojef"]]*price*1e-6
+diffvaldf = (sumvaldf.xs("SEG",level="luscenario")-sumvaldf.xs("WEG",level="luscenario"))
+
+dumvals = pd.concat({"WEG":diffvaldf}, names=["luscenario"])[["prodprojef"]].rename({"prodprojef":"value"},axis=1)
+
+dumtab = pd.merge(tabarea,tabprod,left_index=True,right_index=True)
+pd.merge(dumtab,dumvals,left_index=True,right_index=True,how="left").reset_index("statmodel").drop("statmodel",axis=1)
+
+
+# xr.Dataset(sumprojdf).sel(year = 2016).to_dataframe()
+
+# dumfut = xr.Dataset(sumprojdf).sel(year = feyear)
+# dumhis = xr.Dataset(sumprojdf).sel(year = agyear)
+# ((dumfut-dumhis)/dumhis).to_dataframe()
+
 
 
